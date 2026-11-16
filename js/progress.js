@@ -10,6 +10,7 @@
     custom: [],     // 自分で作った稽古の id
     ads: [],        // 広告で呼び込んだ依頼の id
     sits: [],       // 届いている「事情のある依頼」の id
+    crowned: false, // 最上位の格を納めたことがある（免許皆伝）
     seen: [],       // すでに手ほどきを受けた要素
     rules: [],      // 札入れにしまった仕分け札
   });
@@ -77,9 +78,10 @@
       let added = false;
       for (let guard = 0; state.sits.length < 3 && guard < 20; guard++) {
         const have = state.sits.map((id) => G.levelById(id).situation);
-        const cands = Array.from({ length: 6 }, () => {
+        /* 込み入り具合を広くばらつかせた候補から、店の格に近いものを選ぶ（格 20 まで届く） */
+        const cands = Array.from({ length: 12 }, () => {
           const i = pick(G.gen.SITS.length);
-          return G.levelById(G.gen.newSituatedId(i, pick(G.gen.SITS[i].more.length + 1)));
+          return G.levelById(G.gen.newSituatedId(i, pick(G.gen.maxDepth(i) + 1)));
         }).filter((l) => !have.includes(l.situation));
         if (!cands.length) continue;
         cands.sort((p, q) => Math.abs(p.level - state.rank) - Math.abs(q.level - state.rank));

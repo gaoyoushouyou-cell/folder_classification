@@ -73,8 +73,9 @@
     const nav = (id, label) => h('button', { class: 'nav' + (active === id ? ' on' : ''), onclick: () => go(id) }, label);
     return h('header', { class: 'masthead' },
       h('div', { class: 'sign' },
-        h('span', { class: 'seal', 'aria-hidden': 'true' }, '堂'),
-        h('div', {}, h('h1', {}, 'ひきだし堂'), h('p', {}, '書類整理 うけたまわります'))),
+        h('span', { class: 'seal' + (P().state.crowned ? ' crowned' : ''), 'aria-hidden': 'true' }, '堂'),
+        h('div', {}, h('h1', {}, 'ひきだし堂'),
+          h('p', {}, P().state.crowned ? '免許皆伝　書類整理 うけたまわります' : '書類整理 うけたまわります'))),
       h('nav', {}, nav('home', '受付'), nav('guide', '手引き'), nav('shop', '道具屋'), nav('ledger', '帳簿')),
       h('div', { class: 'purse', title: '手持ちの報酬' }, h('small', {}, '手持ち'), h('strong', {}, P().state.coins), ' 文'));
   }
@@ -707,6 +708,18 @@
     G.bus.emit('ui:submit', { result: res });
     drawSpec();
     showReport(res, gain, rankUp, best);
+    /* 最上位の格を納めたら、免許皆伝（稽古は数えない）。検収書の上にかぶせて出す */
+    if (res.pass && S.level.generated && S.level.generated !== 'c' && S.level.level >= G.gen.MAX_LEVEL) {
+      const st = P().state;
+      st.crowned = true;
+      P().save();
+      const all = Object.values(st.levels);
+      G.fx.finale({
+        grade: S.level.level, title: S.level.title,
+        jobs: all.filter((e) => e.passed).length, stars: all.reduce((a, e) => a + e.stars, 0),
+        time: clock(st.stats.time || 0), thisTime: clock(res.elapsed),
+      });
+    }
   }
 
   function showReport(res, gain, rankUp, best) {

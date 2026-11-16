@@ -895,15 +895,54 @@
     scale.forEach((v, i) => { if (Math.abs(v - strain) < Math.abs(scale[best - 1] - strain)) best = i + 1; });
     return best;
   }
-  /* 事情のある依頼。code = 事情の番号×10 + 込み入り具合（more から何個足すか） */
+  /* ── こじれ: どの事情にも起こりうる「話が込み入っていく」要素と、その理由 ──
+   * 事情ごとの more を使い切ったあとは、ここから順に足していく。全部足すと、すべての要素が出そろう（格 20 相当） */
+  const TANGLE = [
+    ['nest', '数が多いので、一段の棚では探しきれません。'],
+    ['trash', 'あわてて集めたので、同じものが二重に入っています。'],
+    ['exception', '{imp}だけは、どんなときも別にしておく決まりです。'],
+    ['archive', '古いものまで一緒に持ち込んでしまいました。'],
+    ['reserve', 'この件が片づいたら、すぐ次の仕事が始まります。'],
+    ['secret', '中には、限られた人しか見てはいけないものがあります。'],
+    ['draft', '書きかけのものも混ざっています。'],
+    ['backup', '万一に備えて、{imp}の控えを取っておきます。'],
+    ['cloud', '外の関係先にも、一部を見てもらう必要が出てきました。'],
+    ['shortcut', '{handy}は、この件のあいだ何度も開くことになります。'],
+    ['cloudSize', '外の置き場は、大きなファイルを受け付けません。'],
+    ['versions', '直しが何度も入り、版が入り乱れています。'],
+    ['opsCap', 'ほかの人も同じ棚を使っているので、動かしすぎないでください。'],
+    ['fragile', '一度作った入口が切れると、周りが混乱します。'],
+    ['timer', '事情が事情なので、あまり時間がありません。'],
+    ['capacity', '外の置き場は、借りている容量もわずかです。'],
+    ['late', '話を聞いた別の部署からも、追加が届きそうです。'],
+    ['vault', '見てはいけないものは、置き場を分けるだけでは足りないと言われました。'],
+    ['mirror', '人によって、探すときの手がかりが違います。'],
+  ];
+  /* その事情で足していける要素の並び（事情ごとの more → こじれ）。前提の要素は先に入れる */
+  function ladderOf(def) {
+    const out = [];
+    const add = (k) => {
+      if (def.core.includes(k) || out.includes(k)) return;
+      if (MECHS[k].needs) add(MECHS[k].needs);
+      out.push(k);
+    };
+    def.more.forEach(add);
+    TANGLE.forEach(([k]) => add(k));
+    return out;
+  }
+  /* 事情のある依頼。code = (事情の番号+1)×100 + 込み入り具合（足す要素の数）。
+     100 未満は以前の書式（事情の番号×10 + 込み入り具合）として読む */
   function makeSituated(code, seed) {
-    const def = SITS[Math.floor(code / 10) % SITS.length];
-    const depth = Math.min(code % 10, def.more.length);
-    const picked = new Set(def.core.concat(def.more.slice(0, depth)));
+    const index = code < 100 ? Math.floor(code / 10) : Math.floor(code / 100) - 1;
+    const def = SITS[((index % SITS.length) + SITS.length) % SITS.length];
+    const ladder = ladderOf(def);
+    const depth = Math.min(code < 100 ? code % 10 : code % 100, ladder.length);
+    const picked = new Set(def.core.concat(ladder.slice(0, depth)));
     [...picked].forEach((k) => MECHS[k].needs && picked.add(MECHS[k].needs));
     const mechs = Object.keys(MECHS).filter((k) => picked.has(k));
+    const because = Object.assign({}, Object.fromEntries(TANGLE), def.because);
     /* ファイルの数は要素の数に合わせて控えめに（きつさは数ではなく取り合いで出す） */
-    return make(Math.min(12, 3 + mechs.length * 2), seed, 's', { def, code, mechs });
+    return make(Math.min(MAX_LEVEL, 3 + mechs.length * 2), seed, 's', { def: Object.assign({}, def, { because }), code, mechs });
   }
 
   const cache = new Map();
@@ -915,7 +954,9 @@
       return cache.get(id);
     },
     /* 事情の番号と込み入り具合から id を作る */
-    newSituatedId: (sitIndex, depth) => `s-${sitIndex * 10 + depth}-${Math.floor(Math.random() * 1e9)}`,
+    newSituatedId: (sitIndex, depth) => `s-${(sitIndex + 1) * 100 + depth}-${Math.floor(Math.random() * 1e9)}`,
+    /* その事情で足していける要素の数（込み入り具合の上限） */
+    maxDepth: (sitIndex) => ladderOf(SITS[sitIndex]).length,
     newId: (kind, level) => `${kind}-${level}-${Math.floor(Math.random() * 1e9)}`,
     /* 広告費。その格の報酬の下限（要素の数だけで決まる分）の三割。
        合格したときの報酬は、どんなに手際が悪くても満額の 0.9×0.7×0.6 ≒ 37.8% を下回らないので、
