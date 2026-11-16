@@ -109,6 +109,12 @@
       e.plays++;
       state.stats.submissions++;
       state.stats.ops += res.ops;
+      /* 経過時間（手を動かしはじめてから納品まで）。合格したときの最短と、直近の値を残す */
+      e.lastTime = Math.round(res.elapsed);
+      if (res.pass) {
+        e.time = e.time == null ? e.lastTime : Math.min(e.time, e.lastTime);
+        state.stats.time = (state.stats.time || 0) + e.lastTime;
+      }
       let gain = 0;
       let rankUp = false;
       if (res.pass) {

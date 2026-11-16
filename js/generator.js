@@ -83,7 +83,141 @@
       upcoming: [['秋の収穫祭', ['チラシ', '出店者']], ['七夕まつり', ['飾り', '協賛']], ['新春初売り', ['チラシ', '福袋']]],
       jobs: ['事務局のパソコン', '催しのあとの片づけ', '役員交代の引き継ぎ', '補助金の報告前'],
     },
+    {
+      id: 'shinryo', trade: '診療所',
+      clients: ['丘の診療所　丘', 'みどり歯科　緑川', 'こもれび小児科　木下'],
+      projs: ['健診', '予防接種', '往診', '院内研修'],
+      authors: ['丘', '緑川', '木下'],
+      docs: [
+        { doc: '同意書', ext: ['pdf'], important: true },
+        { doc: '問診票', ext: ['pdf', 'docx'], handy: true },
+        { doc: '検査結果', ext: ['xlsx', 'csv'] },
+        { doc: '掲示物', ext: ['png'] },
+        { doc: '院内写真', ext: ['jpg'] },
+      ],
+      upcoming: [['夜間診療', ['当番表', '案内']], ['新棟の開設', ['図面', '備品']], ['健康教室', ['資料', '名簿']]],
+      jobs: ['カルテ移行の前の整理', '院内パソコンの入れ替え', '年度末の書類整理', '監査の前の片づけ'],
+    },
+    {
+      id: 'gakko', trade: '学校',
+      clients: ['桜台小学校　事務室', 'みなと中学校　教務', 'ひばり幼稚園　園長'],
+      projs: ['運動会', '遠足', '文化祭', '卒業式'],
+      authors: ['教務', '事務', '養護'],
+      docs: [
+        { doc: '名簿', ext: ['xlsx'], important: true },
+        { doc: '配布プリント', ext: ['docx', 'pdf'], handy: true },
+        { doc: '行事写真', ext: ['jpg'] },
+        { doc: '会計報告', ext: ['xlsx', 'csv'] },
+        { doc: '校内放送', ext: ['mp3'] },
+      ],
+      upcoming: [['修学旅行', ['しおり', '名簿']], ['入学式', ['式次第', '配布物']], ['公開授業', ['指導案', '案内']]],
+      jobs: ['年度替わりの整理', '職員室の共有フォルダ', '行事のあとの片づけ', '担任交代の引き継ぎ'],
+    },
+    {
+      id: 'houritsu', trade: '法律事務所',
+      clients: ['柏木法律事務所　柏木', '港南司法書士事務所　南', 'つぐみ行政書士事務所　鶫'],
+      projs: ['相続', '会社設立', '賃貸借', '商標'],
+      authors: ['柏木', '南', '鶫'],
+      docs: [
+        { doc: '委任状', ext: ['pdf'], important: true },
+        { doc: '書面の控え', ext: ['docx', 'pdf'], handy: true },
+        { doc: '証拠写真', ext: ['jpg', 'png'] },
+        { doc: '費用明細', ext: ['xlsx'] },
+        { doc: '面談録音', ext: ['mp3'] },
+      ],
+      upcoming: [['遺言の作成', ['原案', '資料']], ['事業承継', ['契約', '評価']], ['登記の変更', ['申請', '添付']]],
+      jobs: ['事件記録の整理', '事務所の移転', '決算前の棚卸し', '新人への引き継ぎ'],
+    },
+    {
+      id: 'inshoku', trade: '飲食店',
+      clients: ['喫茶 灯台　早瀬', 'そば処 竹林　竹内', '洋食 かもめ亭　鴎'],
+      projs: ['春の献立', '夏の献立', '仕出し', '周年祭'],
+      authors: ['早瀬', '竹内', '鴎'],
+      docs: [
+        { doc: '許可証', ext: ['pdf'], important: true },
+        { doc: 'レシピ', ext: ['docx', 'txt'], handy: true },
+        { doc: '料理写真', ext: ['jpg'] },
+        { doc: '仕入れ表', ext: ['xlsx', 'csv'] },
+        { doc: '店内音楽', ext: ['mp3'] },
+      ],
+      upcoming: [['秋の献立', ['試作', '原価']], ['二号店', ['図面', '求人']], ['料理教室', ['資料', '申込']]],
+      jobs: ['店のパソコンの整理', '改装の前の片づけ', '保健所の立入の前', '帳簿の締め'],
+    },
+    {
+      id: 'kenkyu', trade: '研究室',
+      clients: ['水野研究室　水野', '潮見研究所　潮', '星野ゼミ　星野'],
+      projs: ['水質調査', '土壌分析', '気象観測', '文献調査'],
+      authors: ['水野', '潮', '星野'],
+      docs: [
+        { doc: '承諾書', ext: ['pdf'], important: true },
+        { doc: '論文草稿', ext: ['docx'], handy: true },
+        { doc: '測定データ', ext: ['csv', 'xlsx'] },
+        { doc: 'グラフ', ext: ['png'] },
+        { doc: '聞き取り録音', ext: ['wav', 'mp3'] },
+      ],
+      upcoming: [['学会発表', ['要旨', 'スライド']], ['共同研究', ['計画', '覚書']], ['野外実習', ['行程', '名簿']]],
+      jobs: ['研究室の共有ドライブ', '卒業生からの引き継ぎ', '報告書の提出前', '年度末の整理'],
+    },
+    {
+      id: 'yakuba', trade: '役場',
+      clients: ['浜崎町役場　総務課', '山根村役場　住民課', '汐入公民館　館長'],
+      projs: ['防災訓練', '夏まつり', '広報紙', '健康づくり'],
+      authors: ['総務', '住民', '企画'],
+      docs: [
+        { doc: '協定書', ext: ['pdf'], important: true },
+        { doc: '回覧文', ext: ['docx', 'pdf'], handy: true },
+        { doc: '予算表', ext: ['xlsx'] },
+        { doc: 'ポスター', ext: ['png'] },
+        { doc: '記録写真', ext: ['jpg'] },
+      ],
+      upcoming: [['成人のつどい', ['案内', '名簿']], ['町民運動会', ['種目', '備品']], ['文化財調査', ['記録', '写真']]],
+      jobs: ['庁内の共有フォルダ', '人事異動の引き継ぎ', '議会の前の整理', '保存年限の見直し'],
+    },
+    {
+      id: 'shashin', trade: '写真館',
+      clients: ['小野寺写真館　小野寺', 'フォト工房ひかり　光井', 'スタジオ凪　凪'],
+      projs: ['七五三', '成人式', '卒業アルバム', '家族写真'],
+      authors: ['小野寺', '光井', '凪'],
+      docs: [
+        { doc: '使用許諾書', ext: ['pdf'], important: true },
+        { doc: '納品写真', ext: ['jpg', 'png'], handy: true },
+        { doc: '見積書', ext: ['xlsx'] },
+        { doc: '撮影台本', ext: ['docx'] },
+        { doc: '撮影時の音声', ext: ['mp3'] },
+      ],
+      upcoming: [['桜の出張撮影', ['申込', '台本']], ['写真展', ['出品', '案内']], ['アルバムの増刷', ['注文', '原稿']]],
+      jobs: ['撮影シーズン後の片づけ', '店のパソコンの入れ替え', '納品前の整理', '代替わりの引き継ぎ'],
+    },
   ];
+
+  /* ── 出だしの状態: 同じ決まりごとでも、どこから始めるかで仕事が変わる ── */
+  const SCENES = {
+    desk: { label: '机の上から', say: '' },
+    inherit: { label: '前任者の棚', say: '棚には、前の担当が作ったフォルダがそのまま残っています。名前を付け替えて使ってもらって構いません。' },
+    half: { label: 'やりかけの棚', say: '途中までは自分でやってみました。合っているところはそのままで、間違っているところだけ直してください。' },
+  };
+  function applyScene(lv, scene, r) {
+    const ws = new G.Workspace(lv);
+    const plan = new Map();
+    G.planFor(lv, ws).forEach((path, id) => plan.set(ws.node(id).name, path));
+    const sealed = Object.keys(lv.marks).filter((k) => lv.marks[k] === 'vault');
+    const open = (path) => path && !sealed.includes(path[0]);
+    const movable = r.shuffle(lv.files.filter((s) => !s[4] && !s[0].endsWith('.key') && open(plan.get(s[0]))));
+    if (scene === 'inherit') {
+      const junk = r.shuffle(['新しいフォルダ', '新しいフォルダ (2)', 'とりあえず', '古い', '保留', 'あとで見る']).slice(0, r.int(2, 3));
+      lv.folders = junk.map((j) => [j]);
+      movable.slice(0, Math.ceil(movable.length * 0.45)).forEach((s) => (s[4] = [r.pick(junk)]));
+    } else {
+      const right = Math.ceil(movable.length * 0.35);
+      const wrong = Math.ceil(movable.length * 0.15);
+      const places = [...new Set(movable.map((s) => plan.get(s[0]).join('\u0000')))].map((p) => p.split('\u0000'));
+      movable.slice(0, right).forEach((s) => (s[4] = plan.get(s[0])));
+      movable.slice(right, right + wrong).forEach((s) => {
+        const other = places.filter((p) => p.join('/') !== plan.get(s[0]).join('/'));
+        if (other.length) s[4] = r.pick(other);
+      });
+    }
+  }
 
   const AXIS = {
     proj: { seg: '{proj}', word: '案件' },
@@ -300,7 +434,9 @@
     const has = (k) => mechs.includes(k);
 
     /* 分け方の軸 */
-    const a = AXIS[r.pick(level === 1 ? ['proj', 'doc', 'kind'] : ['proj', 'proj', 'doc', 'author'])];
+    const a = AXIS[r.pick(level === 1 ? ['proj', 'doc', 'kind'] : ['proj', 'proj', 'doc', 'author', 'year'])];
+    /* 出だしの状態。格 2 から、半分は机の上から、残りは前任者の棚かやりかけの棚 */
+    const scene = level < 2 ? 'desk' : r.pick(['desk', 'desk', 'inherit', 'half']);
     const secondPool = ['year', 'doc', 'kind', 'proj', 'author'].map((k) => AXIS[k]).filter((v) => v !== a);
     const b = has('nest') ? r.pick(secondPool) : null;
 
@@ -331,7 +467,7 @@
     }
     const x = {
       r, T, a, b, has, files, setDoc, importantDef, handyDef, upcoming,
-      important: importantDef.doc, handy: handyDef.doc, cutYear: 2023, cap: 50,
+      important: importantDef.doc, handy: handyDef.doc, cutYear: 2023, cap: r.pick([30, 50, 80]),
       reservePaths: [[upcoming[0]]].concat(upcoming[1].map((s) => [upcoming[0], s])),
       /* 条件に合うファイルが count 個になるまで、候補を作り替える */
       ensure(count, test, change, among) {
@@ -475,7 +611,10 @@
       `${job}で、ファイルがすっかり散らかってしまいました。`,
       `${job}にあわせて、手元のファイルを整えたいのです。`,
       `お世話になります。${job}の件でお願いがあります。`,
-    ]);
+      `${T.trade}の者です。${job}で手が回らず、お力を借りたいのです。`,
+      `急なお願いで恐縮です。${job}にともなって、ファイルを整理していただけますか。`,
+      `${job}の時期になりました。今年もよろしくお願いします。`,
+    ]) + SCENES[scene].say;
     const baseSay = b
       ? r.pick([
         `まず${a.word}ごとに分け、その中をさらに${b.word}ごとに分けてください。`,
@@ -503,11 +642,9 @@
     const marks = {};
     mechs.forEach((k) => MECHS[k].mark && (marks[MECHS[k].mark[0]] = MECHS[k].mark[1]));
 
-    return {
+    const lv = {
       id: `${kind}-${level}-${seed}`, generated: kind, level, chapter: 'gen',
-      title: job, client, letter,
-      hand: Math.min(3, 1 + (has('backup') ? 1 : 0) + (has('shortcut') || has('reserve') ? 1 : 0)),
-      logic: Math.min(3, Math.ceil(rules.length / 2)),
+      title: job, client, letter, trade: T.trade, scene, sceneLabel: SCENES[scene].label,
       reward: kind === 'c' ? Math.round(full * 0.3) : full,
       mechs, combos, files: fileSpecs, marks, constraints,
       features: { copy: has('backup'), link: has('shortcut') || has('mirror') },
@@ -515,6 +652,13 @@
       lateNote: has('late') ? '追伸: すみません、あとから何件か見つかりました。机の上に足しておきます。決まりは同じでお願いします。' : null,
       teach: mechs.map((k) => ({ mech: k, side: MECHS[k].side, text: MECHS[k].teach })),
     };
+    if (scene !== 'desk') applyScene(lv, scene, r);
+    /* 手と理の重さ（1〜10）は、出来上がった依頼の中身から測る */
+    Object.assign(lv, G.rate(lv, {
+      hand: mechs.filter((k) => MECHS[k].side === 'hand').length,
+      logic: mechs.filter((k) => MECHS[k].side === 'logic').length,
+    }));
+    return lv;
   }
 
   const cache = new Map();

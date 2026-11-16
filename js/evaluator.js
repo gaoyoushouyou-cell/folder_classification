@@ -384,6 +384,25 @@
     }
     /* 分類のほかに手を動かす条項（空フォルダの用意、写し、近道） */
     ((level && level.constraints) || []).forEach((c) => types[c.type].extra && types[c.type].extra(c, ws));
+    /* 「空のフォルダを残さない」依頼では、空になった余計なフォルダ（前任者の棚など）を外側から片づける */
+    if (level && level.constraints.some((c) => c.type === 'noEmpty')) {
+      const spared = G.sparedFolders(level, ws);
+      ws.folders().sort((p, q) => ws.folderPath(p.id).length - ws.folderPath(q.id).length).forEach((d) => {
+        if (ws.node(d.id) && !spared.has(d.id) && !ws.subtreeFiles(d.id).length) ws.removeFolder(d.id);
+      });
+    }
+  };
+
+  /* 「手」と「理」の重さを 1〜10 で表す。手づくりの依頼は levels.js に書いた値、生成した依頼は中身から測る。
+     手: 目安の手数と、手を動かす要素の数。 理: 分類の条項の数、読み解く要素の数、条項どうしの掛け合わせ */
+  G.rate = function (level, sides) {
+    const par = G.computePar(level);
+    const rules = (level.constraints.find((c) => c.type === 'classify') || { rules: [] }).rules.length;
+    return {
+      hand: clamp(Math.round(par / 9 + sides.hand * 0.5 + (level.scene && level.scene !== 'desk' ? 0.5 : 0)), 1, 10),
+      /* 0.6 と 0.85 は、格 1 が 1、格 20 が 10 になるよう合わせた目盛りの係数 */
+      logic: clamp(Math.round(0.6 + 0.85 * (rules * 0.5 + sides.logic * 0.3 + (level.combos || 0) / 15)), 1, 10),
+    };
   };
   /* 条項が求める棚の骨組み（フォルダのパスの一覧）。道具「設計図」と模範解が使う */
   G.skeleton = function (level, ws) {
@@ -436,6 +455,7 @@
     return {
       ev, items: ev.items, quality: ev.quality, pass: ev.pass, gated: ev.gated, par, ops, eff, tempo, attempts, attemptFactor,
       timeLimit, elapsed: elapsed || 0, timeFactor, reward, stars, skills,
+      pace: ops ? (elapsed || 0) / ops : 0, // 1 手あたりの秒数
     };
   };
 })();

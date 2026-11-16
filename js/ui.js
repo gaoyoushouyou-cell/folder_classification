@@ -22,9 +22,12 @@
     $('toasts').append(t);
     setTimeout(() => t.remove(), 2800);
   }
+  /* 手・理の重さ（1〜10）。目盛りは 10 個、5 個目のあとに切れ目を入れて数えやすくする */
   const pips = (n, side) =>
-    h('span', { class: 'pips ' + side, title: (side === 'hand' ? '手しごと' : '理') + `の比重 ${n} / 3` },
-      h('b', {}, side === 'hand' ? '手' : '理'), [0, 1, 2].map((i) => h('i', { class: i < n ? 'on' : '' })));
+    h('span', { class: 'pips ' + side, title: (side === 'hand' ? '手しごと' : '理') + `の重さ ${n} / 10` },
+      h('b', {}, side === 'hand' ? '手' : '理'),
+      Array.from({ length: 10 }, (_, i) => h('i', { class: (i < n ? 'on' : '') + (i === 5 ? ' gap' : '') })),
+      h('em', {}, n));
   const stars = (n) => h('span', { class: 'stars', 'aria-label': `星 ${n} / 3` }, '★'.repeat(n), h('span', { class: 'off' }, '★'.repeat(3 - n)));
   const bar = (v, side) => h('span', { class: 'bar ' + (side || '') }, h('i', { style: `width:${Math.round((v || 0) * 100)}%` }));
   const KIND_CLASS = { 画像: 'k-img', 文書: 'k-doc', 表: 'k-tab', 音声: 'k-snd', 鍵: 'k-key' };
@@ -217,7 +220,7 @@
         L.generated === 'a' ? h('i', { class: 'paid' }, `広告費 ${G.gen.adCost(L.level)} 文 支払い済み`) : null),
       h('span', { class: 'job-title' }, L.title),
       L.generated ? mechChips(L) : null,
-      L.generated ? h('span', { class: 'job-scale' }, `決まりごと ${L.mechs.length}　掛け合わせ ${L.combos}　ファイル ${L.files.length}`) : null,
+      L.generated ? h('span', { class: 'job-scale' }, `${L.trade}・${L.sceneLabel}　決まりごと ${L.mechs.length}　掛け合わせ ${L.combos}　ファイル ${L.files.length}`) : null,
       h('span', { class: 'job-mix' }, pips(L.hand, 'hand'), pips(L.logic, 'logic')),
       h('span', { class: 'job-foot' },
         open ? h('span', {}, `報酬 ${L.reward} 文`) : h('span', {}, '前の依頼を納めると届きます'),
@@ -264,9 +267,9 @@
         h('p', { class: 'chapter-note' }, 'それぞれの技能が問われた依頼での、最高成績の平均です。'),
         h('div', { class: 'skills' }, skillCol('hand', '手 — 手しごと'), skillCol('logic', '理 — 読み解き'))),
       h('section', { class: 'chapter' }, h('h2', {}, '依頼の記録'),
-        h('p', { class: 'chapter-note' }, `納品 ${st.stats.submissions} 回 ／ 星 ${totalStars} / ${G.levels.length * 3} ／ 手持ち ${st.coins} 文`),
+        h('p', { class: 'chapter-note' }, `納品 ${st.stats.submissions} 回 ／ 星 ${totalStars} / ${G.levels.length * 3} ／ 手持ち ${st.coins} 文 ／ 合格した依頼にかけた時間の合計 ${clock(st.stats.time || 0)}`),
         h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
-          h('thead', {}, h('tr', {}, ['依頼', '星', '充足度', '手数 / 目安', '受け取った報酬', '納品回数'].map((x) => h('th', {}, x)))),
+          h('thead', {}, h('tr', {}, ['依頼', '星', '充足度', '手数 / 目安', '最短の時間', '受け取った報酬', '納品回数'].map((x) => h('th', {}, x)))),
           h('tbody', {}, G.levels.map((L) => {
             const e = P().entry(L.id);
             return h('tr', { class: e ? '' : 'none' },
@@ -274,6 +277,7 @@
               h('td', {}, e ? stars(e.stars) : '—'),
               h('td', {}, e ? pct(e.quality) : '—'),
               h('td', {}, e && e.ops != null ? `${e.ops} / ${G.computePar(L)}` : '—'),
+              h('td', {}, e && e.time != null ? clock(e.time) : '—'),
               h('td', {}, e ? `${e.earned} / ${L.reward} 文` : '—'),
               h('td', {}, e ? e.plays : '—'));
           }))))),
@@ -292,11 +296,11 @@
       h('p', { class: 'chapter-note' }, `店の格 ${P().state.rank} ／ 納めた件数: ` +
         (Object.keys(by).length ? Object.keys(by).map((k) => `格${k} ×${by[k]}`).join('、') : 'まだありません')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
-        h('thead', {}, h('tr', {}, ['依頼', '格', '星', '充足度', '手数', '受け取った報酬'].map((x) => h('th', {}, x)))),
+        h('thead', {}, h('tr', {}, ['依頼', '格', '星', '充足度', '手数', '時間', '受け取った報酬'].map((x) => h('th', {}, x)))),
         h('tbody', {}, rows.slice(0, 12).map(([, e]) => h('tr', {},
           h('td', {}, e.title, h('small', {}, KIND_NAME[e.kind])),
           h('td', {}, e.level), h('td', {}, stars(e.stars)), h('td', {}, pct(e.quality)),
-          h('td', {}, e.ops == null ? '—' : e.ops), h('td', {}, `${e.earned} 文`)))))));
+          h('td', {}, e.ops == null ? '—' : e.ops), h('td', {}, e.time != null ? clock(e.time) : '—'), h('td', {}, `${e.earned} 文`)))))));
   }
 
   /* ══════════ 作業 ══════════ */
@@ -342,10 +346,9 @@
       S.stale = true; prune(); tutEvent('ws:change', d); refresh(); }));
     S.off.push(G.bus.on('ui:inspect', (d) => tutEvent('ui:inspect', d)));
     S.off.push(G.bus.on('ui:submit', (d) => tutEvent('ui:submit', d)));
-    if (level.timed) {
-      const tick = setInterval(() => S && !S.done && drawMeter(), 1000);
-      S.off.push(() => clearInterval(tick));
-    }
+    /* 経過時間は、納期のあるなしに関わらず毎秒描き直す */
+    const tick = setInterval(() => S && S.t0 && !S.done && drawMeter(), 1000);
+    S.off.push(() => clearInterval(tick));
     document.body.classList.add('playing');
 
     const hints = new Set();
@@ -425,6 +428,8 @@
     $('meter').replaceChildren(
       limit ? h('span', { class: 'timer' + (left < 0 ? ' late' : left < 60 ? ' soon' : ''), title: '手を動かしはじめてから計ります。遅れても差し戻しにはなりません' },
         h('small', {}, left < 0 ? '遅れ' : S.t0 ? '納期まで' : '納期'), h('strong', {}, clock(Math.abs(left)))) : null,
+      h('span', { class: 'timer', title: '最初に手を動かしたときから計ります。読んで考える時間は含みません' },
+        h('small', {}, '経過'), h('strong', {}, clock(elapsed()))),
       h('small', {}, '手数'), h('strong', { class: cap && S.ws.ops > cap ? 'over' : '' }, S.ws.ops),
       h('span', {}, ` / 目安 ${S.par}`, cap ? `・上限 ${cap}` : ''));
     $('undo').disabled = !S.ws.history.length;
@@ -672,13 +677,15 @@
     S.lastEval = res.ev;
     S.stale = false;
     if (res.pass) { S.done = true; S.tEnd = Date.now(); }
+    const before = P().entry(S.level.id);
+    const best = before && before.time != null ? before.time : null; // 記帳する前の最短
     const { gain, rankUp } = P().record(S.level, res);
     G.bus.emit('ui:submit', { result: res });
     drawSpec();
-    showReport(res, gain, rankUp);
+    showReport(res, gain, rankUp, best);
   }
 
-  function showReport(res, gain, rankUp) {
+  function showReport(res, gain, rankUp, best) {
     const L = S.level;
     const i = G.levels.indexOf(L);
     const next = i >= 0 ? G.levels[i + 1] : null;
@@ -700,8 +707,10 @@
         h('h3', {}, h('span', { class: 'tag hand' }, '手'), '手際', h('b', {}, pct(res.tempo))),
         h('p', {}, `手数 ${res.ops}（目安 ${res.par}）／ 納品 ${res.attempts} 回目`,
           res.eff > 1 ? '　目安より少ない手数で仕上げました。' : ''),
-        res.timeLimit ? h('p', {}, `かかった時間 ${clock(res.elapsed)}（納期 ${clock(res.timeLimit)}）`,
-          res.timeFactor < 1 ? `　遅れのぶん、報酬が ${Math.round((1 - res.timeFactor) * 100)}% 減ります。` : '　納期に間に合いました。') : null),
+        h('p', {}, `かかった時間 ${clock(res.elapsed)}`, res.ops ? `（1 手あたり ${res.pace.toFixed(1)} 秒）` : '',
+          res.timeLimit ? `／ 納期 ${clock(res.timeLimit)}` : '',
+          !res.timeLimit ? '' : res.timeFactor < 1 ? `　遅れのぶん、報酬が ${Math.round((1 - res.timeFactor) * 100)}% 減ります。` : '　納期に間に合いました。',
+          best != null && res.pass ? (res.elapsed < best ? `　これまでの最短 ${clock(best)} を更新しました。` : `　これまでの最短は ${clock(best)}。`) : '')),
       res.pass ? h('section', { class: 'report-sec pay' },
         h('h3', {}, '報酬', stars(res.stars)),
         h('p', { class: 'formula' },

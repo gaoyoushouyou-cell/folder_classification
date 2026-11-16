@@ -125,7 +125,10 @@ small { font-size: .8em; color: var(--ink-soft); font-weight: 400; }
 }
 .pips { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .pips b { font-family: var(--serif); margin-right: 2px; }
-.pips i { width: 11px; height: 11px; border: 1.5px solid currentColor; display: block; }
+.pips i { width: 6px; height: 11px; border: 1.5px solid currentColor; display: block; margin-left: -3px; }
+.pips i:first-of-type { margin-left: 0; }
+.pips i.gap { margin-left: 2px; }
+.pips em { font-style: normal; font-variant-numeric: tabular-nums; font-weight: 700; min-width: 1.2em; }
 .pips.hand { color: var(--shu); }
 .pips.hand i { border-radius: 50%; }
 .pips.logic { color: var(--ai); }
