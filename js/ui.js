@@ -97,7 +97,7 @@
         'いらっしゃい。ここは、散らかったフォルダを預かって整える店です。',
         '依頼主の', h('em', {}, '要求書'), 'を読み、棚を組み、納品して報酬をもらいます。',
         h('span', { class: 'tag hand' }, '手'), 'は机と棚での手しごと、',
-        h('span', { class: 'tag logic' }, '理'), 'は要求書の読み解き。依頼ごとに、どちらがどれだけ要るかを示してあります。'),
+        h('span', { class: 'tag logic' }, '理'), 'は要求書の読み解き。まずは下の「修業」を上から順にどうぞ。'),
       modeTabs(),
       { walkin: walkinSection, sit: sitSection, train: trainSection, ad: adSection, keiko: customSection }[homeMode]());
   }
@@ -108,14 +108,17 @@
     const st = P().state;
     const open = P().walkinsOpen();
     const done = G.levels.filter((l) => P().passed(l.id)).length;
-    if (!homeMode) homeMode = open ? 'walkin' : 'train';
+    /* 修業が終わるまでは、修業を最初に開く */
+    if (!homeMode) homeMode = done < G.levels.length ? 'train' : 'walkin';
     const modes = [
       { id: 'walkin', name: '飛び込みの依頼', note: '店の格に合わせて届く。納めると格が上がる', stat: open ? `店の格 ${st.rank}・3 件待ち` : '最初の修業を納めると届く' },
       { id: 'sit', name: '事情のある依頼', note: '依頼主の事情から決まりが生まれる。格は中身のきつさで決まる', stat: open ? '3 件待ち' : '最初の修業を納めると届く' },
-      { id: 'train', name: '修業の依頼', note: '手ほどきつき。基本を順に身につける', stat: `${done} / ${G.levels.length} 件を納めた` },
+      { id: 'train', name: 'チュートリアル', note: 'はじめての方はここから。8 つの修業で基本を順に身につける', stat: `${done} / ${G.levels.length} を納めた` },
       { id: 'ad', name: '広告を打つ', note: 'お金を払い、好きな格の依頼を呼び込む。報酬は満額', stat: st.ads.length ? `${st.ads.length} 件を受注中` : '受注なし' },
       { id: 'keiko', name: '稽古をつくる', note: '好きな格をまとめて作って試す。報酬は三割', stat: st.custom.length ? `${st.custom.length} 件` : 'まだ作っていない' },
     ];
+    /* 修業が終わるまでは、修業を先頭に置く */
+    if (done < G.levels.length) modes.unshift(modes.splice(modes.findIndex((m) => m.id === 'train'), 1)[0]);
     return h('div', { class: 'modes', role: 'tablist', 'aria-label': '依頼の種類' }, modes.map((m) =>
       h('button', {
         class: 'mode' + (m.id === homeMode ? ' on' : ''), role: 'tab', 'aria-selected': String(m.id === homeMode),
@@ -137,10 +140,49 @@
       h('div', { class: 'jobs' }, P().situated().map((l) => jobCard(l))));
   }
 
+  /* 修業（チュートリアル）: 8 つの修業を、上から順にたどる一本の道のりとして見せる。
+     どこまで進んだか、次はどれか、それぞれで何が身につくかが、ひと目で分かるようにする */
   function trainSection() {
-    return h('div', {}, G.chapters.map((ch) => h('section', { class: 'chapter' },
-      h('h2', {}, ch.title), h('p', { class: 'chapter-note' }, ch.note),
-      h('div', { class: 'jobs' }, G.levels.filter((l) => l.chapter === ch.id).map((l) => jobCard(l))))));
+    const total = G.levels.length;
+    const done = G.levels.filter((l) => P().passed(l.id)).length;
+    const next = G.levels.find((l) => !P().passed(l.id));
+    const row = (L) => {
+      const no = G.levels.indexOf(L) + 1;
+      const e = P().entry(L.id);
+      const passed = !!(e && e.passed);
+      const state = passed ? 'done' : L === next ? 'next' : 'locked';
+      return h('li', { class: 'lesson ' + state },
+        h('button', { class: 'lesson-btn', disabled: state === 'locked', onclick: () => go('play', L.id) },
+          h('span', { class: 'lesson-no', 'aria-hidden': 'true' }, passed ? '済' : no),
+          h('span', { class: 'lesson-main' },
+            h('span', { class: 'lesson-title' }, h('small', {}, `修業 ${no}`), L.title),
+            h('span', { class: 'lesson-learn' }, L.learn.map((t) => h('i', {}, t)))),
+          h('span', { class: 'lesson-side' },
+            h('span', { class: 'job-mix' }, pips(L.hand, 'hand'), pips(L.logic, 'logic')),
+            h('span', { class: 'lesson-state' },
+              passed ? [stars(e.stars), e.time != null ? ` 最短 ${clock(e.time)}` : '']
+                : state === 'next' ? h('b', {}, '次はこれ　はじめる →') : '前の修業を納めると開きます'))),
+        /* 修業 1 のあとに、ほかの依頼が開くことを道のりの上に示す */
+        no === 1 ? h('p', { class: 'milestone' + (passed ? ' reached' : '') },
+          passed ? 'ここで、飛び込みの依頼・事情のある依頼・広告が使えるようになりました。' : 'ここまで納めると、飛び込みの依頼・事情のある依頼・広告が使えるようになります。') : null);
+    };
+    return h('div', {},
+      h('section', { class: 'chapter train-head' },
+        h('h2', {}, '修業', h('small', {}, 'チュートリアル')),
+        h('p', { class: 'chapter-note' },
+          'はじめての方は、ここから順に進めてください。ひとつの修業で 2〜3 個のことを身につけ、8 つで基本がひととおり揃います。画面の上に出る「手ほどき」が、次にすることを教えます。'),
+        h('div', { class: 'train-bar' },
+          h('span', { class: 'bar hand', role: 'img', 'aria-label': `修業 ${total} のうち ${done} を納めた` }, h('i', { style: `width:${(done / total) * 100}%` })),
+          h('b', {}, `${done} / ${total}`),
+          next ? h('button', { class: 'btn primary', onclick: () => go('play', next.id) },
+            `${done ? '続きから' : 'はじめる'}: 修業 ${G.levels.indexOf(next) + 1}「${next.title}」`)
+            : h('span', { class: 'owned' }, '修業を終えました'))),
+      G.chapters.map((ch) => h('section', { class: 'chapter' },
+        h('h3', { class: 'train-chapter' }, ch.title, h('small', {}, ch.note)),
+        h('ol', { class: 'lessons' }, G.levels.filter((l) => l.chapter === ch.id).map(row)))),
+      h('p', { class: 'train-foot' },
+        'クラウド・バックアップ・近道など、この先の決まりごとは、初めて出会った依頼で手ほどきが出ます。',
+        h('button', { class: 'btn small', onclick: () => go('guide') }, '手引きで先に読む')));
   }
 
   function adSection() {
@@ -388,7 +430,8 @@
         h('div', { class: 'topbar' },
           h('button', { class: 'btn ghost', onclick: () => go('home') }, '← 受付へ'),
           h('div', { class: 'job' },
-            h('small', {}, level.generated ? `${KIND_NAME[level.generated]}・格 ${level.level}${level.situation ? ' 相当' : ''}・傾向 ${level.tendLabel}　` : '', level.client),
+            h('small', {}, level.generated ? `${KIND_NAME[level.generated]}・格 ${level.level}${level.situation ? ' 相当' : ''}・傾向 ${level.tendLabel}　`
+              : `修業 ${G.levels.indexOf(level) + 1} / ${G.levels.length}　`, level.client),
             h('strong', {}, level.title)),
           h('div', { class: 'meter', id: 'meter' }),
           h('button', { class: 'btn', id: 'undo', onclick: () => S.ws.undo() }, 'ひとつ戻す'),
@@ -400,6 +443,8 @@
           BASICS.map((b) => h('button', { class: 'key ' + b.side, onclick: () => showGuide(b.key) }, b.label)),
           (level.mechs || []).length ? h('span', { class: 'keys-sep' }, 'この依頼の要素') : null,
           (level.mechs || []).map((k) => h('button', { class: 'key elem ' + G.gen.MECHS[k].side, onclick: () => showGuide(k) }, G.gen.MECHS[k].label))),
+        /* 修業では、この回で身につけることを上に出しておく */
+        level.learn ? h('div', { class: 'goal' }, h('b', {}, 'この修業で身につけること'), level.learn.map((t) => h('i', {}, t))) : null,
         h('div', { id: 'tut' }),
         h('div', { class: 'grid' },
           h('section', { class: 'side hand' },
@@ -704,6 +749,7 @@
     if (res.pass) { S.done = true; S.tEnd = Date.now(); }
     const before = P().entry(S.level.id);
     const best = before && before.time != null ? before.time : null; // 記帳する前の最短
+    S.firstPass = !(before && before.passed);
     const { gain, rankUp } = P().record(S.level, res);
     G.bus.emit('ui:submit', { result: res });
     drawSpec();
@@ -726,6 +772,7 @@
     const L = S.level;
     const i = G.levels.indexOf(L);
     const next = i >= 0 ? G.levels[i + 1] : null;
+    const firstPass = S.firstPass;
     const close = () => $('overlay').replaceChildren();
     const f2 = (v) => v.toFixed(2);
     $('overlay').replaceChildren(h('div', { class: 'veil' }, h('div', { class: 'report', role: 'dialog', 'aria-label': '検収書' },
@@ -757,8 +804,14 @@
           L.generated === 'c' ? '　稽古なので、基本の報酬は三割です。' : ''),
         rankUp ? h('p', { class: 'rank-up' }, `店の格が ${P().state.rank} に上がりました。`,
           G.gen.freshAt(P().state.rank).length ? `次からは「${G.gen.freshAt(P().state.rank).join('」「')}」のある依頼が届きます。` : '') : null) : null,
+      /* 修業を納めたら、身につけたことを振り返り、次に何が開いたかを知らせる */
+      res.pass && L.learn ? h('section', { class: 'report-sec learned' },
+        h('h3', {}, `修業 ${i + 1} で身につけたこと`),
+        h('ul', {}, L.learn.map((t) => h('li', {}, t))),
+        i === 0 && firstPass ? h('p', { class: 'rank-up' }, '飛び込みの依頼・事情のある依頼・広告が使えるようになりました。') : null,
+        !next ? h('p', { class: 'rank-up' }, '修業はこれで終わりです。この先の決まりごとは、出会ったときに手ほどきが出ます。') : null) : null,
       h('div', { class: 'report-actions' },
-        res.pass && next ? h('button', { class: 'btn primary', onclick: () => go('play', next.id) }, '次の依頼へ') : null,
+        res.pass && next ? h('button', { class: 'btn primary', onclick: () => go('play', next.id) }, `次の修業へ: ${next.title}`) : null,
         res.pass ? h('button', { class: 'btn', onclick: () => go('home') }, '受付へ戻る')
           : h('button', { class: 'btn primary', onclick: close }, '直して納品しなおす'),
         res.pass ? h('button', { class: 'btn ghost', onclick: () => go('play', L.id) }, 'もう一度') : null))));

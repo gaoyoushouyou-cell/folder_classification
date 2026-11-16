@@ -459,6 +459,50 @@ small { font-size: .8em; color: var(--ink-soft); font-weight: 400; }
 .rates th { text-align: left; }
 .paid { font-style: normal; margin-left: 8px; color: var(--gold); }
 
+/* ── 修業（チュートリアル）: 上から順にたどる道のり ── */
+.train-head h2 small { margin-left: 12px; letter-spacing: .1em; }
+.train-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.train-bar .bar { flex: 1 1 200px; height: 12px; }
+.train-bar b { font: 700 18px var(--serif); font-variant-numeric: tabular-nums; }
+.train-chapter { font-size: 18px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+.train-chapter small { font-family: var(--sans); }
+.lessons { list-style: none; margin: 0; padding: 0 0 0 22px; border-left: 3px solid var(--line); display: grid; gap: 10px; }
+.lesson { position: relative; }
+.lesson-btn {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer;
+  background: var(--card); border: var(--edge); border-radius: 3px; padding: 10px 16px 10px 12px; box-shadow: var(--lift);
+}
+.lesson-btn:hover:not(:disabled) { background: #fff; }
+.lesson-no {
+  flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; margin-left: -45px;
+  background: var(--paper); border: 3px solid var(--line); font: 700 17px/1 var(--serif); color: var(--ink-soft);
+}
+.lesson-main { flex: 1; min-width: 0; display: grid; gap: 4px; margin-left: 6px; }
+.lesson-title { font: 700 18px var(--serif); }
+.lesson-title small { margin-right: 10px; font-family: var(--sans); }
+.lesson-learn { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.lesson-learn i, .goal i { font-style: normal; font-size: 12.5px; border: 1px solid var(--line); background: var(--paper); padding: 0 8px; border-radius: 2px; }
+.lesson-side { flex: none; display: grid; gap: 4px; justify-items: end; font-size: 13px; }
+.lesson-side .job-mix { margin: 0; }
+.lesson.done .lesson-no { background: var(--card); border-color: var(--shu); color: var(--shu); }
+.lesson.next .lesson-btn { border-left: 6px solid var(--shu); }
+.lesson.next .lesson-no { background: var(--shu); border-color: var(--shu); color: #fff8ef; }
+.lesson.next .lesson-state b { color: var(--shu); }
+.lesson.locked .lesson-btn { background: transparent; border-style: dashed; box-shadow: none; cursor: default; color: var(--ink-soft); }
+.lesson.locked .lesson-learn i { background: transparent; }
+.milestone { margin: 8px 0 0 6px; font-size: 13px; color: var(--ink-soft); border-left: 3px solid var(--gold); padding-left: 10px; }
+.milestone.reached { color: var(--ink); }
+.train-foot { margin-top: 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--ink-soft); font-size: 14px; }
+.goal { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 0 0; font-size: 12.5px; }
+.goal b { font: 700 13px var(--serif); margin-right: 4px; }
+.goal i { background: var(--card); border-color: var(--ink-soft); }
+.report-sec.learned ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+.report-sec.learned li::before { content: '○ '; color: var(--moss); font-weight: 700; }
+@media (max-width: 640px) {
+  .lesson-btn { flex-wrap: wrap; }
+  .lesson-side { justify-items: start; margin-left: 6px; }
+}
+
 /* ── 傾向 ── */
 .tend { font-family: var(--serif); font-weight: 700; padding: 0 7px; border-radius: 2px; margin-right: 8px; border: 1.5px solid currentColor; }
 .tend-mamori { color: var(--shu); }
