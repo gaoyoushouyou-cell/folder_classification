@@ -31,7 +31,7 @@
   const stars = (n) => h('span', { class: 'stars', 'aria-label': `星 ${n} / 3` }, '★'.repeat(n), h('span', { class: 'off' }, '★'.repeat(3 - n)));
   const bar = (v, side) => h('span', { class: 'bar ' + (side || '') }, h('i', { style: `width:${Math.round((v || 0) * 100)}%` }));
   const KIND_CLASS = { 画像: 'k-img', 文書: 'k-doc', 表: 'k-tab', 音声: 'k-snd', 鍵: 'k-key' };
-  const KIND_NAME = { w: '飛び込み', c: '稽古', a: '広告' };
+  const KIND_NAME = { w: '飛び込み', c: '稽古', a: '広告', s: '事情' };
 
   /* ══════════ 手引き ══════════
    * 手ほどきの常設版。基本の操作と、依頼に出てくる要素（生成器の MECHS）を同じ形で並べる。
@@ -98,7 +98,7 @@
         h('span', { class: 'tag hand' }, '手'), 'は机と棚での手しごと、',
         h('span', { class: 'tag logic' }, '理'), 'は要求書の読み解き。依頼ごとに、どちらがどれだけ要るかを示してあります。'),
       modeTabs(),
-      { walkin: walkinSection, train: trainSection, ad: adSection, keiko: customSection }[homeMode]());
+      { walkin: walkinSection, sit: sitSection, train: trainSection, ad: adSection, keiko: customSection }[homeMode]());
   }
 
   /* 受付はまず「どの種類の依頼か」を選び、選んだものの詳細だけを下に出す */
@@ -110,6 +110,7 @@
     if (!homeMode) homeMode = open ? 'walkin' : 'train';
     const modes = [
       { id: 'walkin', name: '飛び込みの依頼', note: '店の格に合わせて届く。納めると格が上がる', stat: open ? `店の格 ${st.rank}・3 件待ち` : '最初の修業を納めると届く' },
+      { id: 'sit', name: '事情のある依頼', note: '依頼主の事情から決まりが生まれる。格は中身のきつさで決まる', stat: open ? '3 件待ち' : '最初の修業を納めると届く' },
       { id: 'train', name: '修業の依頼', note: '手ほどきつき。基本を順に身につける', stat: `${done} / ${G.levels.length} 件を納めた` },
       { id: 'ad', name: '広告を打つ', note: 'お金を払い、好きな格の依頼を呼び込む。報酬は満額', stat: st.ads.length ? `${st.ads.length} 件を受注中` : '受注なし' },
       { id: 'keiko', name: '稽古をつくる', note: '好きな格をまとめて作って試す。報酬は三割', stat: st.custom.length ? `${st.custom.length} 件` : 'まだ作っていない' },
@@ -119,6 +120,20 @@
         class: 'mode' + (m.id === homeMode ? ' on' : ''), role: 'tab', 'aria-selected': String(m.id === homeMode),
         onclick: () => { homeMode = m.id; go('home'); },
       }, h('strong', {}, m.name), h('span', {}, m.note), h('small', {}, m.stat))));
+  }
+
+  function sitSection() {
+    if (!P().walkinsOpen()) {
+      return h('section', { class: 'chapter' }, h('h2', {}, '事情のある依頼'),
+        h('p', { class: 'chapter-note' }, '最初の修業の依頼を納めると、事情を抱えた依頼主が訪ねてくるようになります。'));
+    }
+    const T = G.gen.TENDS;
+    return h('section', { class: 'chapter' }, h('h2', {}, '事情のある依頼'),
+      h('p', { class: 'chapter-note' },
+        '調査が入る、担当が辞めた、締め切りが迫る——依頼主にはそれぞれ事情があり、決まりごとはそこから生まれます。手紙には、なぜその決まりが要るのかが書いてあります。',
+        '格は前もって決まっておらず、決まりどうしがどれだけファイルを取り合うかで測ります。決まりが少なくても、取り合いが多ければ格は高くなります。'),
+      h('dl', { class: 'tends' }, Object.keys(T).map((k) => h('div', { class: 'tend-' + k }, h('dt', {}, T[k].label), h('dd', {}, T[k].desc)))),
+      h('div', { class: 'jobs' }, P().situated().map((l) => jobCard(l))));
   }
 
   function trainSection() {
@@ -216,11 +231,14 @@
     const open = P().unlocked(L);
     const e = P().entry(L.id);
     const card = h('button', { class: 'job-card' + (open ? '' : ' locked') + (e && e.passed ? ' done' : '') + (L.generated ? ' gen' : ''), disabled: !open, onclick: () => go('play', L.id) },
-      h('span', { class: 'job-client' }, L.generated ? h('b', { class: 'grade' }, `格 ${L.level}`) : null, L.client,
+      h('span', { class: 'job-client' },
+        L.generated ? h('b', { class: 'grade' }, `格 ${L.level}${L.situation ? ' 相当' : ''}`) : null,
+        L.generated ? h('b', { class: 'tend tend-' + L.tend, title: `傾向: ${G.gen.TENDS[L.tend].desc}（${L.tendTally}）` }, L.tendLabel) : null,
+        L.client,
         L.generated === 'a' ? h('i', { class: 'paid' }, `広告費 ${G.gen.adCost(L.level)} 文 支払い済み`) : null),
       h('span', { class: 'job-title' }, L.title),
       L.generated ? mechChips(L) : null,
-      L.generated ? h('span', { class: 'job-scale' }, `${L.trade}・${L.sceneLabel}　決まりごと ${L.mechs.length}　掛け合わせ ${L.combos}　ファイル ${L.files.length}`) : null,
+      L.generated ? h('span', { class: 'job-scale' }, `${L.trade}・${L.sceneLabel}　決まりごと ${L.mechs.length}　取り合い ${L.contested}　ファイル ${L.files.length}`) : null,
       h('span', { class: 'job-mix' }, pips(L.hand, 'hand'), pips(L.logic, 'logic')),
       h('span', { class: 'job-foot' },
         open ? h('span', {}, `報酬 ${L.reward} 文`) : h('span', {}, '前の依頼を納めると届きます'),
@@ -291,10 +309,16 @@
     const rows = Object.entries(P().state.levels).filter(([, e]) => e.kind).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
     if (!rows.length) return null;
     const by = {};
-    rows.forEach(([, e]) => { if (e.passed) by[e.level] = (by[e.level] || 0) + 1; });
+    const tends = {};
+    rows.forEach(([, e]) => {
+      if (!e.passed) return;
+      by[e.level] = (by[e.level] || 0) + 1;
+      if (e.tend) tends[e.tend] = (tends[e.tend] || 0) + 1;
+    });
     return h('section', { class: 'chapter' }, h('h2', {}, '飛び込み・稽古の記録'),
       h('p', { class: 'chapter-note' }, `店の格 ${P().state.rank} ／ 納めた件数: ` +
-        (Object.keys(by).length ? Object.keys(by).map((k) => `格${k} ×${by[k]}`).join('、') : 'まだありません')),
+        (Object.keys(by).length ? Object.keys(by).map((k) => `格${k} ×${by[k]}`).join('、') : 'まだありません'),
+        Object.keys(tends).length ? ` ／ 傾向ごと: ${Object.keys(tends).map((k) => `${k} ×${tends[k]}`).join('、')}` : ''),
       h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
         h('thead', {}, h('tr', {}, ['依頼', '格', '星', '充足度', '手数', '時間', '受け取った報酬'].map((x) => h('th', {}, x)))),
         h('tbody', {}, rows.slice(0, 12).map(([, e]) => h('tr', {},
@@ -363,7 +387,7 @@
         h('div', { class: 'topbar' },
           h('button', { class: 'btn ghost', onclick: () => go('home') }, '← 受付へ'),
           h('div', { class: 'job' },
-            h('small', {}, level.generated ? `${KIND_NAME[level.generated]}・格 ${level.level}　` : '', level.client),
+            h('small', {}, level.generated ? `${KIND_NAME[level.generated]}・格 ${level.level}${level.situation ? ' 相当' : ''}・傾向 ${level.tendLabel}　` : '', level.client),
             h('strong', {}, level.title)),
           h('div', { class: 'meter', id: 'meter' }),
           h('button', { class: 'btn', id: 'undo', onclick: () => S.ws.undo() }, 'ひとつ戻す'),

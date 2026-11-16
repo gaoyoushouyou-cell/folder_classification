@@ -9,6 +9,7 @@
     walkins: [],    // 届いている飛び込みの依頼の id
     custom: [],     // 自分で作った稽古の id
     ads: [],        // 広告で呼び込んだ依頼の id
+    sits: [],       // 届いている「事情のある依頼」の id
     seen: [],       // すでに手ほどきを受けた要素
     rules: [],      // 札入れにしまった仕分け札
   });
@@ -68,6 +69,25 @@
       }
       if (swapped || state.walkins.length !== before) save();
       return state.walkins.map(G.levelById).sort((a, b) => b.level - a.level);
+    },
+    /* ── 事情のある依頼: いつも 3 件。事情は重ならないようにし、格は店の格に近いものを選ぶ ── */
+    situated() {
+      if (!this.walkinsOpen()) return [];
+      const pick = (n) => Math.floor(Math.random() * n);
+      let added = false;
+      for (let guard = 0; state.sits.length < 3 && guard < 20; guard++) {
+        const have = state.sits.map((id) => G.levelById(id).situation);
+        const cands = Array.from({ length: 6 }, () => {
+          const i = pick(G.gen.SITS.length);
+          return G.levelById(G.gen.newSituatedId(i, pick(G.gen.SITS[i].more.length + 1)));
+        }).filter((l) => !have.includes(l.situation));
+        if (!cands.length) continue;
+        cands.sort((p, q) => Math.abs(p.level - state.rank) - Math.abs(q.level - state.rank));
+        state.sits.push(cands[pick(Math.min(2, cands.length))].id);
+        added = true;
+      }
+      if (added) save();
+      return state.sits.map(G.levelById);
     },
     /* ── 広告: お金を払って、好きな格の依頼を呼び込む。報酬は満額 ── */
     ads() { return state.ads.map(G.levelById); },
@@ -132,12 +152,13 @@
         }
         /* 広告の依頼は、納めたら受注の一覧から下げる */
         if (level.generated === 'a') state.ads = state.ads.filter((x) => x !== level.id);
+        if (level.generated === 's') state.sits = state.sits.filter((x) => x !== level.id);
       }
       if (res.quality >= e.quality) {
         e.quality = res.quality;
         e.skills = res.skills;
       }
-      if (level.generated) { e.title = level.title; e.level = level.level; e.kind = level.generated; e.at = Date.now(); }
+      if (level.generated) { e.title = level.title; e.level = level.level; e.kind = level.generated; e.tend = level.tendLabel; e.at = Date.now(); }
       changed();
       return { gain, rankUp };
     },

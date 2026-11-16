@@ -426,17 +426,176 @@
     return Object.keys(MECHS).filter((k) => picked.has(k));
   }
 
-  function make(level, seed, kind) {
+  /* ── 傾向: 決まりごとが「何のためのものか」で分けた 5 つの向き ──
+   * 依頼の傾向は、その依頼に出てくる要素の向きを数えて決める（名札ではなく、中身から出る性質） */
+  const TENDS = {
+    mamori: { label: '守り', desc: '見せてはいけないもの、失くせないものを守るための決まりが中心' },
+    soto: { label: '外向き', desc: '外の人とファイルを分け合うための決まりが中心' },
+    kagiri: { label: '限り', desc: '時間・手数・届く順番など、限られた中でやりくりする決まりが中心' },
+    rireki: { label: '履歴', desc: '古いもの・版・重複など、時間の積み重なりを捌く決まりが中心' },
+    tadori: { label: '辿り', desc: 'あとから誰でも迷わず辿れるようにするための決まりが中心' },
+  };
+  const TEND_OF = {
+    secret: 'mamori', vault: 'mamori', backup: 'mamori', exception: 'mamori',
+    cloud: 'soto', cloudSize: 'soto', capacity: 'soto', draft: 'soto',
+    opsCap: 'kagiri', timer: 'kagiri', late: 'kagiri',
+    archive: 'rireki', versions: 'rireki', trash: 'rireki',
+    nest: 'tadori', shortcut: 'tadori', mirror: 'tadori', fragile: 'tadori', reserve: 'tadori',
+  };
+  /* core（その事情なら必ず要る要素）は 2 倍に数える。あとから加わった要素に、事情の芯が押し流されないように */
+  function tendencyOf(mechs, fallback, core) {
+    const tally = {};
+    const weight = {};
+    mechs.forEach((k) => {
+      tally[TEND_OF[k]] = (tally[TEND_OF[k]] || 0) + 1;
+      weight[TEND_OF[k]] = (weight[TEND_OF[k]] || 0) + (core && core.includes(k) ? 2 : 1);
+    });
+    const keys = Object.keys(tally).sort((p, q) => weight[q] - weight[p] || (p === fallback ? -1 : q === fallback ? 1 : 0));
+    return { tend: keys[0] || fallback || 'tadori', tally };
+  }
+
+  /* ── 事情: 依頼主がなぜその決まりを必要としているか ──
+   * core: その事情なら必ず要る要素 / more: 事情が込み入るほど加わる要素（先頭から depth 個）
+   * why: 手紙の書き出し（事情の説明） / because: 各要素の一文の前に置く理由
+   * say: 要素の一文そのものを事情に合わせて言い換える / before: 条項の順番を事情に合わせて入れ替える [先, 後]
+   * {imp}=大事な書類 {handy}=よく開く書類 {cut}=保管の境目の年 */
+  const SITS = [
+    {
+      id: 'audit', name: '調査が入る', tend: 'mamori', core: ['exception', 'secret', 'backup'], more: ['archive', 'trash', 'vault', 'opsCap'],
+      why: '来月、役所の調査が入ることになりました。求められたものをすぐ出せて、見せなくてよいものが混ざらない棚にしておきたいのです。',
+      because: {
+        exception: '調査で真っ先に求められるのが{imp}です。', secret: '調査の対象でないものまで見られては困ります。',
+        backup: '原本を預けることになるかもしれません。', archive: '対象の期間より前のものは、出す必要がありません。',
+        trash: '同じものが二つ出てくると、説明に困ります。', vault: '調査のあいだは人の出入りが増えます。',
+        opsCap: '直前に棚が大きく変わっていると、かえって不審に思われます。',
+      },
+    },
+    {
+      id: 'leak', name: '漏えいのあとで', tend: 'mamori', core: ['cloud', 'secret'], more: ['trash', 'vault', 'cloudSize', 'backup'],
+      why: '先日、外に出してはいけないファイルが、社外から見える場所に置かれていたことが分かりました。同じことが二度と起きない棚にしたいのです。',
+      because: {
+        cloud: '外に見せてよいものの置き場を、一か所にはっきり決めます。', secret: '今回の原因は、機密がほかと混ざっていたことでした。',
+        trash: '出どころの分からないコピーも原因のひとつでした。', vault: '置き場を分けるだけでは、まだ不安が残ります。',
+        cloudSize: '大きなファイルは、中身を確かめきれないまま上がってしまいがちです。', backup: '消されたり書き換えられたりしていないか、あとで照らし合わせたいのです。',
+      },
+    },
+    {
+      id: 'joint', name: '共同作業がはじまる', tend: 'soto', core: ['cloud', 'draft'], more: ['cloudSize', 'capacity', 'versions', 'secret', 'reserve'],
+      why: '来週から、取引先と同じファイルを見ながら仕事を進めます。相手に渡すものと、手元に留めるものを分けておきたいのです。',
+      because: {
+        cloud: '相手と共有する置き場を用意しました。', draft: '書きかけを相手に見られるのは避けたいところです。',
+        cloudSize: '相手の回線が細く、大きなファイルは開けないそうです。', capacity: '共有の置き場は、借りている容量が小さいのです。',
+        versions: 'どれが最新なのか、相手が迷わないようにしたいのです。', secret: '共有を始める前に、渡してはいけないものを先に除けておきます。',
+        reserve: '相手から届く資料の入れ物も、先に要ります。',
+      },
+    },
+    {
+      id: 'shrink', name: '置ける量が減った', tend: 'soto', core: ['cloud', 'capacity', 'archive'], more: ['cloudSize', 'trash', 'opsCap', 'versions'],
+      why: '機械を入れ替えたら、前より保存できる量が減ってしまいました。置けるものと置けないものを見きわめたいのです。',
+      because: {
+        cloud: 'すぐ使うものは、外からも開ける置き場に寄せます。', capacity: 'その置き場も、契約した分しか入りません。',
+        archive: '古いものは、別の媒体にまとめて移すつもりです。', cloudSize: '一つひとつの大きさにも上限があります。',
+        trash: '同じものを二つ持っている余裕はありません。', opsCap: '移し替えの途中で止まると、どこまでやったか分からなくなります。',
+        versions: '旧い版まで抱えておく余裕がありません。',
+      },
+    },
+    {
+      id: 'quit', name: '担当が急に辞めた', tend: 'rireki', scene: 'inherit', core: ['trash', 'versions'], more: ['late', 'draft', 'archive', 'exception'],
+      why: '担当していた者が急に辞めてしまい、棚の中身を知る人がいません。何が最新で、何が要らないのか、整理しながら確かめてほしいのです。',
+      because: {
+        trash: 'あちこちにコピーを取っておく癖のある人でした。', versions: '直すたびに、別の名前で保存していたようです。',
+        late: '本人の机や鞄から、まだ出てくるかもしれません。', draft: '途中で止まったままの仕事もあります。',
+        archive: 'いつから置いてあるのか分からないものも混ざっています。', exception: '{imp}だけは、行方が分からないと本当に困ります。',
+      },
+    },
+    {
+      id: 'deadline', name: '締め切りが迫る', tend: 'kagiri', core: ['timer', 'draft'], more: ['versions', 'late', 'opsCap', 'exception'],
+      why: '締め切りが目の前です。仕上がったものだけを、すぐ出せる形にしておきたいのです。',
+      because: {
+        timer: 'とにかく時間がありません。', draft: '仕上がっていないものを、まちがって出すわけにはいきません。',
+        versions: '直前まで手を入れていたので、版が入り乱れています。', late: '最後の何点かは、いま仕上げているところです。',
+        opsCap: 'みんなが同じ棚を見ながら追い込んでいます。', exception: '{imp}は、提出のときに必ず添えます。',
+      },
+    },
+    {
+      id: 'revise', name: '直しを重ねた納品', tend: 'rireki', core: ['versions', 'archive'], more: ['draft', 'trash', 'backup', 'exception'],
+      why: '何度も直しの入った仕事を、ようやく納めます。先方に渡すのは最後のものだけ。経緯は手元に残しておきます。',
+      because: {
+        versions: '渡すのは最終の版だけです。', archive: '始めたころの資料は、もう見返しません。',
+        draft: '採用されなかった案も、捨てずに取っておきます。', trash: '直しの途中で、同じものがいくつもできました。',
+        backup: '納めたあとで「言った・言わない」になると困ります。', exception: '{imp}は、納品物とは別にしておきます。',
+      },
+    },
+    {
+      id: 'disaster', name: '災害に備える', tend: 'mamori', core: ['backup', 'reserve'], more: ['shortcut', 'cloud', 'secret', 'mirror'],
+      why: '去年の大雨で、近くの事務所が書類を失いました。うちも、失くしたら立ち行かないものから備えておきたいのです。',
+      because: {
+        backup: '失くしたら取り返しがつきません。', reserve: 'いざというときの手順や連絡先の入れ物を、先に作っておきます。',
+        shortcut: '非常のときに探し回らずに済むようにしたいのです。', cloud: '建物に入れなくなっても見られる場所が要ります。',
+        secret: '備えのために持ち出すものと、持ち出してはいけないものを分けます。', mirror: '別の人が、別の手がかりで探すことになるかもしれません。',
+      },
+    },
+    {
+      id: 'newcomer', name: '新しい人が入る', tend: 'tadori', core: ['nest', 'shortcut'], more: ['reserve', 'mirror', 'fragile', 'draft'],
+      why: '来月、新しい人が入ります。事情を知らない人が見ても、迷わず辿れる棚にしておきたいのです。',
+      because: {
+        nest: '一段だけでは、どこに何があるか見当がつきません。', shortcut: '最初のうちは、よく使うものだけ覚えてもらいます。',
+        reserve: '新しい人に任せる仕事の入れ物も用意します。', mirror: '人によって、探すときの手がかりが違います。',
+        fragile: '近道が切れていると、新しい人は自分のせいだと思ってしまいます。', draft: '書きかけを完成品と思い込まれると困ります。',
+      },
+    },
+    {
+      id: 'retention', name: '保存年限の見直し', tend: 'rireki', core: ['archive', 'exception'], more: ['versions', 'secret', 'backup', 'trash'],
+      before: ['archive', 'exception'],
+      why: '書類の保存年限を見直すことになりました。年限を過ぎたものは、種類を問わずひとまとめにして、処分の判断を待ちます。',
+      say: {
+        archive: '{cut}年より前のものは年限を過ぎています。{imp}であっても、例外なく「保管」へまとめてください。',
+        exception: '年限の内にある{imp}は、「重要」にまとめてください。',
+      },
+      because: {
+        versions: '年限を数えるのは、最後の版からです。', secret: '機密のものは、年限とは別の決まりで扱います。',
+        backup: '処分の判断が出るまで、年限の内のものは念を入れて守ります。', trash: '同じものを二重に数えないようにします。',
+      },
+    },
+    {
+      id: 'launch', name: '新しい仕事を立ち上げる', tend: 'tadori', core: ['reserve', 'nest'], more: ['draft', 'cloud', 'shortcut', 'exception'],
+      why: '新しい仕事が決まりました。走り出す前に、これまでの分を片づけて、新しい分の置き場を作っておきたいのです。',
+      because: {
+        reserve: '始まってから入れ物を作ると、最初の数日で散らかります。', nest: 'これから数が増えるので、一段では足りなくなります。',
+        draft: '立ち上げの時期は、書きかけが増えます。', cloud: '外の協力先にも見てもらうことになります。',
+        shortcut: '立ち上げのあいだは、同じものを何度も開きます。', exception: '{imp}を交わすところから仕事が始まります。',
+      },
+    },
+    {
+      id: 'live', name: '止められない棚', tend: 'tadori', scene: 'half', core: ['opsCap', 'shortcut', 'fragile'], more: ['mirror', 'timer', 'late'],
+      why: 'この棚は、いまも毎日みんなが使っています。動かしすぎると仕事が止まるので、直すのは必要なところだけにしてください。',
+      because: {
+        opsCap: '動かした数だけ、誰かが「無い」と騒ぎます。', shortcut: 'みんなが使う入口は、ひとつに揃えておきます。',
+        fragile: '入口が切れると、仕事がそこで止まります。', mirror: '部署によって、探すときの手がかりが違います。',
+        timer: '作業のあいだ、棚を使うのを待ってもらっています。', late: '作業の最中にも、新しいものは届きます。',
+      },
+    },
+  ];
+
+  /* sit: 事情のある依頼を作るとき { def, code, mechs }。無ければ、格に応じて要素を積む */
+  function make(level, seed, kind, sit) {
     level = Math.max(1, Math.min(MAX_LEVEL, level | 0));
-    const r = rng(seed * 7919 + level);
+    const r = rng(seed * 7919 + level + (sit ? sit.code * 131 : 0));
     const T = r.pick(THEMES);
-    const mechs = chooseMechs(level, r);
+    const mechs = sit ? sit.mechs : chooseMechs(level, r);
     const has = (k) => mechs.includes(k);
+    /* 条項の順番。事情によっては、ふだんと逆の順が筋になる（例: 年限を過ぎたものは、大事な書類でも保管へ） */
+    const order = ORDER.slice();
+    if (sit && sit.def.before) {
+      const [first, then] = sit.def.before;
+      order.splice(order.indexOf(first), 1);
+      order.splice(order.indexOf(then), 0, first);
+    }
 
     /* 分け方の軸 */
     const a = AXIS[r.pick(level === 1 ? ['proj', 'doc', 'kind'] : ['proj', 'proj', 'doc', 'author', 'year'])];
     /* 出だしの状態。格 2 から、半分は机の上から、残りは前任者の棚かやりかけの棚 */
-    const scene = level < 2 ? 'desk' : r.pick(['desk', 'desk', 'inherit', 'half']);
+    const scene = sit && sit.def.scene ? sit.def.scene : level < 2 ? 'desk' : r.pick(['desk', 'desk', 'inherit', 'half']);
     const secondPool = ['year', 'doc', 'kind', 'proj', 'author'].map((k) => AXIS[k]).filter((v) => v !== a);
     const b = has('nest') ? r.pick(secondPool) : null;
 
@@ -495,7 +654,7 @@
 
     /* どの条項にも、実際に当てはまるファイルが 1 つはあるようにする。
        優先の高い条項に先に取られて空になった条項があれば、ふつうのファイルを 1 つその条項向けに作り替える */
-    const keyed = ORDER.filter(has).map((k) => [k, MECHS[k].rule(x)]);
+    const keyed = order.filter(has).map((k) => [k, MECHS[k].rule(x)]);
     const firstOf = (f) => (keyed.find(([, rule]) => G.match(rule.when, { attrs: f, name: '' })) || ['base'])[0];
     const plain = (f) => { f.secrecy = '社内'; f.state = '確定版'; f.year = Math.max(f.year, x.cutYear); };
     const FORCE = {
@@ -522,6 +681,25 @@
     }
 
     const ordinary = (f) => !f.dupOf && f.doc !== x.important && f.doc !== x.handy;
+
+    /* 事情のある依頼では、条項の「取り合い」を増やす。ある条項に当たるファイルを、それより下の条項にも
+       当てはまるように作り替える（行き先は変わらないが、順番を読まないとまちがえる） */
+    if (sit) {
+      const ALSO = {
+        secret: (f) => (f.secrecy = '機密'), archive: (f) => (f.year = x.cutYear - 1),
+        draft: (f) => (f.state = '下書き'), exception: (f) => setDoc(f, importantDef),
+      };
+      const ks = keyed.map(([k]) => k);
+      ks.forEach((hi, i) => ks.slice(i + 1).forEach((lo) => {
+        if (!ALSO[lo]) return;
+        const cand = files.find((f) => !f.dupOf && !f.tug && f.doc !== x.handy && firstOf(f) === hi);
+        if (!cand) return;
+        const snap = Object.assign({}, cand);
+        ALSO[lo](cand);
+        cand.tug = true;
+        if (firstOf(cand) !== hi) Object.assign(cand, snap, { tug: false });
+      }));
+    }
 
     /* 棚の容量: クラウドに上がる候補を 3 つ以上にし、サイズを互いに違えて、いちばん大きい 1 つだけが入りきらないようにする */
     if (has('capacity')) {
@@ -598,7 +776,7 @@
 
     /* ── 条項を組む ── */
     const basePath = b ? [a.seg, b.seg] : [a.seg];
-    const rules = ORDER.filter(has).map((k) => MECHS[k].rule(x)).concat([{ when: true, path: basePath }]);
+    const rules = order.filter(has).map((k) => MECHS[k].rule(x)).concat([{ when: true, path: basePath }]);
     const constraints = [{ type: 'classify', rules }];
     mechs.forEach((k) => MECHS[k].more && constraints.push(...MECHS[k].more(x)));
     if (level >= 2) constraints.push({ type: 'noEmpty' });
@@ -607,7 +785,8 @@
     /* ── 手紙を書く ── */
     const client = r.pick(T.clients);
     const job = r.pick(T.jobs);
-    const opener = r.pick([
+    const fill = (s) => s.replace(/\{imp\}/g, x.important).replace(/\{handy\}/g, x.handy).replace(/\{cut\}/g, x.cutYear);
+    const opener = sit ? fill(sit.def.why) + SCENES[scene].say : r.pick([
       `${job}で、ファイルがすっかり散らかってしまいました。`,
       `${job}にあわせて、手元のファイルを整えたいのです。`,
       `お世話になります。${job}の件でお願いがあります。`,
@@ -628,10 +807,20 @@
     /* 手紙では、ふつうの分け方を先に述べ、そのあと「ただし」を優先の低いものから重ねていく */
     const sayOrder = ['exception', 'draft', 'cloud', 'cloudSize', 'capacity', 'archive', 'secret', 'vault', 'versions', 'trash',
       'backup', 'shortcut', 'fragile', 'mirror', 'reserve', 'opsCap', 'timer'];
-    const says = sayOrder.filter(has).map((k) => MECHS[k].say && MECHS[k].say(x)).filter(Boolean);
+    /* 事情のある依頼では、決まりごとの一文の前に「なぜそれが要るのか」を添える（言い換えがあればそれを使う） */
+    const sayOf = (k) => {
+      if (sit && sit.def.say && sit.def.say[k]) return fill(sit.def.say[k]);
+      const body = MECHS[k].say && MECHS[k].say(x);
+      return body && sit && sit.def.because[k] ? fill(sit.def.because[k]) + body : body;
+    };
+    const says = sayOrder.filter(has).map(sayOf).filter(Boolean);
+    /* 条項が 3 つ以上重なるときは、迷ったときの順番を依頼主の言葉で言い切る */
+    const precedence = sit && rules.length >= 4
+      ? `いくつもの決まりに当てはまるものは、${rules.slice(0, -1).map((q) => `「${q.path[0]}」`).join('、')}の順に、先に当てはまったほうへ入れてください。` : '';
     const closing = level >= 2 ? r.pick(['使わない空のフォルダは残さないでください。', '余計な空フォルダは片づけておいてください。']) : '';
     /* 段落ごとに改行で区切る（画面では段落として組まれる） */
-    const letter = [opener + baseSay + yearNote, ...says, closing].filter(Boolean).join('\n');
+    const letter = sit ? [opener, baseSay + yearNote, ...says, precedence, closing].filter(Boolean).join('\n')
+      : [opener + baseSay + yearNote, ...says, closing].filter(Boolean).join('\n');
 
     /* ── 難しさの物差し: 要素の数と、条項どうしの掛け合わせの数 ── */
     const combos = (rules.length * (rules.length - 1)) / 2 +
@@ -653,6 +842,20 @@
       teach: mechs.map((k) => ({ mech: k, side: MECHS[k].side, text: MECHS[k].teach })),
     };
     if (scene !== 'desk') applyScene(lv, scene, r);
+    /* 傾向は、出てくる要素の向きを数えて決める */
+    const t = tendencyOf(mechs, sit && sit.def.tend, sit && sit.def.core);
+    lv.tend = t.tend;
+    lv.tendLabel = TENDS[t.tend].label;
+    lv.tendTally = Object.keys(t.tally).sort((p, q) => t.tally[q] - t.tally[p]).map((k) => `${TENDS[k].label} ${t.tally[k]}`).join('・');
+    lv.strain = strainOf(lv);
+    if (sit) {
+      /* 事情のある依頼の格は、決めておくのではなく、出来上がった中身の「きつさ」から測る */
+      lv.id = `s-${sit.code}-${seed}`;
+      lv.title = sit.def.name;
+      lv.situation = sit.def.id;
+      lv.level = gradeOf(lv.strain);
+      lv.reward = 20 + 10 * mechs.length + 4 * combos + 4 * lv.level;
+    }
     /* 手と理の重さ（1〜10）は、出来上がった依頼の中身から測る */
     Object.assign(lv, G.rate(lv, {
       hand: mechs.filter((k) => MECHS[k].side === 'hand').length,
@@ -661,14 +864,58 @@
     return lv;
   }
 
+  /* ── きつさ: 要素の数ではなく、条項どうしがどれだけファイルを取り合うかで測る ──
+   *   条項の数 ＋ 取り合いになるファイルの数（2 つ以上の条項に当てはまるもの）
+   *   ＋ 分類のほかに手を動かす条項 ＋ 順番や全体を読まないと解けない仕掛け */
+  function strainOf(lv) {
+    const ws = new G.Workspace(lv);
+    ws.release();
+    const rules = lv.constraints[0].rules.slice(0, -1);
+    const files = ws.originals();
+    const contested = files.filter((f) => rules.filter((q) => G.match(q.when, f)).length >= 2).length;
+    const others = lv.constraints.filter((c) => ['backup', 'shortcut', 'forbid', 'reserve', 'opsLimit'].includes(c.type)).length;
+    const has = (k) => lv.mechs.includes(k);
+    const tricks = (has('fragile') ? 1.5 : 0) + (has('timer') ? 1 : 0) + (has('late') ? 1.5 : 0) + (has('vault') ? 2 : 0) +
+      (has('capacity') ? 2 : 0) + (has('versions') ? 1.5 : 0) + (has('nest') ? 0.5 : 0) + (lv.scene !== 'desk' ? 0.5 : 0);
+    lv.contested = contested;
+    return rules.length + contested * 0.6 + others * 1.2 + tricks;
+  }
+  /* 積み上げ式の格 1〜20 の「きつさ」を物差しにして、いちばん近い格を返す */
+  let scale = null;
+  function gradeOf(strain) {
+    if (!scale) {
+      scale = [];
+      for (let lv = 1; lv <= MAX_LEVEL; lv++) {
+        let sum = 0;
+        for (let s = 1; s <= 8; s++) sum += make(lv, 9000 + s, 'w').strain;
+        scale.push(Math.max(sum / 8, lv > 1 ? scale[lv - 2] + 0.01 : 0)); // 格が上がれば必ず大きくなるよう均す
+      }
+    }
+    let best = 1;
+    scale.forEach((v, i) => { if (Math.abs(v - strain) < Math.abs(scale[best - 1] - strain)) best = i + 1; });
+    return best;
+  }
+  /* 事情のある依頼。code = 事情の番号×10 + 込み入り具合（more から何個足すか） */
+  function makeSituated(code, seed) {
+    const def = SITS[Math.floor(code / 10) % SITS.length];
+    const depth = Math.min(code % 10, def.more.length);
+    const picked = new Set(def.core.concat(def.more.slice(0, depth)));
+    [...picked].forEach((k) => MECHS[k].needs && picked.add(MECHS[k].needs));
+    const mechs = Object.keys(MECHS).filter((k) => picked.has(k));
+    /* ファイルの数は要素の数に合わせて控えめに（きつさは数ではなく取り合いで出す） */
+    return make(Math.min(12, 3 + mechs.length * 2), seed, 's', { def, code, mechs });
+  }
+
   const cache = new Map();
   G.gen = {
-    MAX_LEVEL, MECHS,
+    MAX_LEVEL, MECHS, TENDS, SITS,
     make(level, seed, kind) {
       const id = `${kind}-${level}-${seed}`;
-      if (!cache.has(id)) cache.set(id, make(level, seed, kind));
+      if (!cache.has(id)) cache.set(id, kind === 's' ? makeSituated(level, seed) : make(level, seed, kind));
       return cache.get(id);
     },
+    /* 事情の番号と込み入り具合から id を作る */
+    newSituatedId: (sitIndex, depth) => `s-${sitIndex * 10 + depth}-${Math.floor(Math.random() * 1e9)}`,
     newId: (kind, level) => `${kind}-${level}-${Math.floor(Math.random() * 1e9)}`,
     /* 広告費。その格の報酬の下限（要素の数だけで決まる分）の三割。
        合格したときの報酬は、どんなに手際が悪くても満額の 0.9×0.7×0.6 ≒ 37.8% を下回らないので、
@@ -685,7 +932,7 @@
   G.levelById = function (id) {
     const hand = G.levels.find((l) => l.id === id);
     if (hand) return hand;
-    const m = /^([wca])-(\d+)-(\d+)$/.exec(id || '');
+    const m = /^([wcas])-(\d+)-(\d+)$/.exec(id || '');
     return m ? G.gen.make(Number(m[2]), Number(m[3]), m[1]) : null;
   };
 })();
