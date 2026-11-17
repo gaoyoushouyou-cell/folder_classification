@@ -659,3 +659,110 @@ small { font-size: .8em; color: var(--ink-soft); font-weight: 400; }
   .stamp, .toast { animation: none; }
   .job-card:hover:not(:disabled) { transform: none; }
 }
+
+/* ══════════ 文字を減らす: 説明は畳むか、触れたときに出す ══════════ */
+[hidden] { display: none !important; }
+[title]:not(button):not(input):not(select):not(.file):not(.folder-tab):not(.folder-name):not(.folder-count) { cursor: help; }
+
+/* 受付 */
+.welcome { border: none; border-left: 4px solid var(--shu); background: transparent; padding: 2px 14px; margin-bottom: 16px; line-height: 1.8; }
+.modes { display: flex; flex-wrap: wrap; gap: 0; margin-top: 0; border-bottom: 1.5px solid var(--line); }
+.mode {
+  display: flex; align-items: baseline; gap: 8px; border: none; border-bottom: 3px solid transparent; border-radius: 0;
+  padding: 8px 18px 7px; margin-bottom: -1.5px; color: var(--ink-soft);
+}
+.mode strong { font-size: 17px; }
+.mode small { margin: 0; color: var(--ink-soft); font-size: 12.5px; }
+.mode:hover { color: var(--ink); border-bottom-color: var(--line); }
+.mode.on { background: transparent; box-shadow: none; color: var(--ink); border-bottom-color: var(--shu); }
+.chapter-note { font-size: 14px; }
+.chapter-note .chips, .quote .chips, .rank-up .chips { display: inline-flex; vertical-align: middle; margin-left: 10px; align-items: center; }
+.chapter-note.chips { display: flex; }
+.tends { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tends small { margin-right: 4px; }
+.tends .tend { margin: 0; font-size: 13px; }
+
+/* 修業の道のり */
+.train-head { margin-top: 22px; }
+.train-bar { margin-top: 8px; }
+.train-part { margin-top: 22px; }
+.train-chapter { font-size: 15px; color: var(--ink-soft); letter-spacing: .08em; }
+.lessons { gap: 8px; }
+.lesson-btn { min-height: 52px; padding: 8px 16px 8px 12px; }
+.lesson-title { font-size: 17px; }
+.lesson.locked .lesson-btn { min-height: 44px; border-color: var(--line); }
+.lesson.locked .lesson-title { font-weight: 400; }
+.lesson-side { display: flex; align-items: center; gap: 16px; }
+.milestone { border: none; padding: 0; margin: 4px 0 0 8px; font-size: 12.5px; }
+.milestone::before { content: '↳ '; color: var(--gold); }
+.train-foot { font-size: 13px; }
+
+/* 依頼の封筒 */
+.job-card { gap: 8px; }
+.job-foot b { font: 700 17px var(--serif); color: var(--gold); }
+.job-foot .stars { margin-left: 10px; }
+.job-foot .job-scale { margin-left: auto; }
+.paid { border: 1px solid currentColor; border-radius: 2px; padding: 0 6px; font-size: 11.5px; }
+.rates-fold { margin-bottom: 16px; }
+.rates-fold > summary { font-size: 13px; color: var(--ink-soft); gap: 6px; }
+.rates-fold .rates { margin: 8px 0 0; }
+.quote { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; }
+
+/* 道具屋 */
+.ware { gap: 6px; }
+.ware h3 { font-size: 18px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ware h3 small { display: inline; }
+.ware p { color: var(--ink-soft); }
+
+/* 帳簿 */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; }
+.tiles > div { background: var(--card); border: 1.5px solid var(--line); border-radius: 3px; padding: 8px 14px; }
+.tiles dt, .facts dt { font-size: 12px; color: var(--ink-soft); }
+.tiles dd, .facts dd { margin: 0; font: 700 22px/1.3 var(--serif); font-variant-numeric: tabular-nums; }
+.tiles dd small, .facts dd small { font-family: var(--sans); font-size: 12.5px; }
+.skill-col h3 { font-size: 15px; margin-bottom: 2px; }
+
+/* 手引き: 見出しだけを並べ、押したものを開く */
+.guide-grid { align-items: start; gap: 8px; }
+.guide-item { padding: 0; }
+.guide-item > summary { display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; list-style: none; font-family: var(--serif); font-size: 15.5px; }
+.guide-item > summary::-webkit-details-marker { display: none; }
+.guide-item > summary::after { content: '＋'; margin-left: auto; color: var(--ink-soft); font: 400 13px var(--sans); }
+.guide-item[open] > summary::after { content: '−'; }
+.guide-item > summary .tag { margin: 0; }
+.guide-item > summary small { font-family: var(--sans); }
+.guide-item .here { margin-left: 4px; }
+.guide-item > p { padding: 0 14px 10px; font-size: 14px; }
+.guide-item[open] { border-color: var(--ink-soft); }
+.guide-rest { font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
+
+/* 作業画面 */
+.topbar .job small { cursor: default; }
+.keys { gap: 4px; padding-top: 5px; }
+.key { font-size: 12px; background: var(--card); }
+.coach p b { display: none; }
+.side-label { letter-spacing: .06em; }
+.desk h3 small { font-variant-numeric: tabular-nums; }
+.letter > summary { font-weight: 400; color: var(--ink-soft); }
+.spec h3 { cursor: default; }
+.spec h3 small { font-family: var(--sans); color: var(--gold); }
+.clause-kind i { font-style: normal; font-weight: 400; margin-left: 6px; border: 1px solid currentColor; border-radius: 2px; padding: 0 5px; font-size: 11px; }
+.slip-empty { border: none; padding: 8px 2px; }
+
+/* 検収書 */
+.facts { display: flex; flex-wrap: wrap; gap: 4px 32px; margin: 0; }
+.notes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.notes:empty { display: none; }
+.notes i { font-style: normal; font-size: 12.5px; padding: 0 8px; border-radius: 2px; border: 1px solid var(--moss); color: var(--moss); }
+.notes i.bad { border-color: var(--shu); color: #8a2f1c; }
+.notes i.plain { border-color: var(--line); color: var(--ink-soft); }
+.report-sec.pay h3 .stars { margin-left: 12px; font-size: 16px; }
+.report-sec h3 .pay-total { color: var(--gold); font-size: 22px; }
+.formula { font-size: 12.5px; color: var(--ink-soft); }
+.report-sec.learned ul { font-size: 13px; }
+.rank-up { display: flex; align-items: center; flex-wrap: wrap; }
+
+@media (max-width: 1080px) {
+  .modes { display: flex; }
+  .mode { padding: 8px 12px 7px; }
+}

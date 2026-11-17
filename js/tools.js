@@ -31,7 +31,7 @@
   /* ══ 手の道具 ══ */
   G.tools.register({
     id: 'narabe', name: '並べ札', side: 'hand', price: 25,
-    blurb: '机の上のファイルを、種類・年・案件などの順にそろえて並べる。散らかった山が見渡せるようになる。',
+    blurb: '机の上を、種類・年・案件などの順に並べる。',
     setup(ctx) {
       const sel = h('select', { 'aria-label': '机の並べ方', onchange: () => ctx.ui.setDeskSort(sel.value || null) },
         h('option', { value: '' }, '並べない'),
@@ -42,7 +42,7 @@
 
   G.tools.register({
     id: 'mushi', name: '虫めがね', side: 'hand', price: 45,
-    blurb: '机の上を言葉で絞り込む。名前だけでなく、札の中身（作成者・機密区分など）でも探せる。まとめ掴みがあれば、見えているものを一度に掴める。',
+    blurb: '机の上を言葉で絞り込む。札の中身でも探せる。',
     setup(ctx) {
       const box = h('input', {
         type: 'search', class: 'belt-search', placeholder: '机の上を探す', 'aria-label': '机の上を絞り込む',
@@ -57,7 +57,7 @@
 
   G.tools.register({
     id: 'matome', name: 'まとめ掴み', side: 'hand', price: 60,
-    blurb: 'Ctrl（または Shift）を押しながらファイルを選ぶと、束にして一度に運べる。束は 1 手として数える。',
+    blurb: 'Ctrl か Shift を押しながら選び、束を 1 手で運ぶ。',
     setup(ctx) {
       ctx.caps.add('multiSelect');
       ctx.ui.addControl(h('span', { class: 'belt-note' }, 'まとめ掴み: Ctrl＋押す'));
@@ -67,7 +67,7 @@
   /* ══ 理の道具 ══ */
   G.tools.register({
     id: 'kenin', name: '検印', side: 'logic', price: 90,
-    blurb: '納品する前から、要求書の各条項に ○ △ × の印が出る。読み解きが合っているか、その場で確かめられる。',
+    blurb: '納品の前から、条項に ○ △ × の印が出る。',
     setup(ctx) { ctx.caps.add('liveCheck'); },
   });
 
@@ -92,7 +92,7 @@
 
   G.tools.register({
     id: 'shiwake', name: '仕分け札', side: 'logic', price: 160,
-    blurb: '「〈属性〉が ○○ のファイルを、このフォルダへ」という条件を書くと、当てはまるものを束ごと 1 手で運ぶ。',
+    blurb: '条件を書くと、当てはまるファイルを 1 手で運ぶ。',
     setup(ctx) {
       const st = { conds: [{ attr: 'kind', op: 'eq', value: null }], join: 'all', path: [], deskOnly: false };
       const again = () => ctx.ui.refresh();
@@ -183,19 +183,19 @@
 
   G.tools.register({
     id: 'fudaire', name: '札入れ', side: 'logic', price: 120, requires: ['shiwake'],
-    blurb: '書いた仕分け札をしまっておき、ほかの依頼でも使い回せる。まとめて流せば、上の札を優先して順に運ぶ。行き先のフォルダが無ければ作る。',
+    blurb: '仕分け札をしまい、ほかの依頼でも使い回す。',
     setup() {},
   });
 
   G.tools.register({
     id: 'kasane', name: '重ね札', side: 'logic', price: 140, requires: ['shiwake'],
-    blurb: '仕分け札の強化。条件をふたつ重ねて「かつ／または」でつなげる。年やサイズは「より前」「より大きい」でも書ける。',
+    blurb: '条件をふたつ重ねる。年やサイズの大小でも書ける。',
     setup() {},
   });
 
   G.tools.register({
     id: 'sekkeizu', name: '設計図', side: 'logic', price: 220,
-    blurb: '要求書の条項から、必要なフォルダの骨組みを 1 手で起こす。頼まれた空フォルダも含む。運び入れるのは自分の仕事。',
+    blurb: '条項から、必要なフォルダの骨組みを 1 手で起こす。',
     setup(ctx) {
       ctx.ui.addControl(h('button', {
         class: 'btn logic small',
