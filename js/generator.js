@@ -213,7 +213,8 @@
       const places = [...new Set(movable.map((s) => plan.get(s[0]).join('\u0000')))].map((p) => p.split('\u0000'));
       movable.slice(0, right).forEach((s) => (s[4] = plan.get(s[0])));
       movable.slice(right, right + wrong).forEach((s) => {
-        const other = places.filter((p) => p.join('/') !== plan.get(s[0]).join('/'));
+        /* まちがった置き場にクラウドは使わない（最初から機密が外に出ている、という出だしにしない） */
+        const other = places.filter((p) => p.join('/') !== plan.get(s[0]).join('/') && p[0] !== 'クラウド');
         if (other.length) s[4] = r.pick(other);
       });
     }
@@ -598,6 +599,24 @@
       },
     },
     {
+      id: 'naiji', name: '内示の前', tend: 'mamori', hushWord: '内示', core: ['hide', 'secret'], more: ['exception', 'trash', 'backup', 'opsCap'],
+      why: '来週、人の異動が発表されます。それまでは、関係する書類が誰の目にも触れないようにしておきたいのです。',
+      because: {
+        hide: '発表の前に知られると、大ごとになります。', secret: 'もともと限られた人しか見られないものは、いつもどおり分けます。',
+        exception: '{imp}は、異動があっても扱いは変わりません。', trash: '控えのつもりで取ったコピーが、いちばん漏れやすいのです。',
+        backup: 'ばたばたする時期なので、失くしものが心配です。', opsCap: '棚が急に様変わりすると、何かあると勘づかれます。',
+      },
+    },
+    {
+      id: 'happyo', name: '発表の前', tend: 'mamori', hushWord: '未発表', core: ['hide', 'draft'], more: ['versions', 'cloud', 'timer', 'late'],
+      why: '新しい品の発表を控えています。当日までは、関係するものを人目につかないところへ置いておきたいのです。',
+      because: {
+        hide: '発表より先に外へ出ては、元も子もありません。', draft: '仕上がっていない案が、完成品として出回ると困ります。',
+        versions: '直しを重ねたので、どれが最後か分からなくなりがちです。', cloud: '発表してよいものだけは、外の人にも渡しておきます。',
+        timer: '発表の日は動かせません。', late: '当日ぎりぎりまで、新しいものが上がってきます。',
+      },
+    },
+    {
       id: 'live', name: '止められない棚', tend: 'tadori', scene: 'half', core: ['opsCap', 'shortcut', 'fragile'], more: ['mirror', 'timer', 'late'],
       why: 'この棚は、いまも毎日みんなが使っています。動かしすぎると仕事が止まるので、直すのは必要なところだけにしてください。',
       because: {
@@ -658,6 +677,12 @@
     const x = {
       r, T, a, b, has, files, setDoc, importantDef, handyDef, upcoming,
       important: importantDef.doc, handy: handyDef.doc, cutYear: 2023, cap: r.pick([30, 50, 80]),
+      /* 奥にしまうものの目印と、しまう先（途中のフォルダ名まで指定する） */
+      hushWord: (sit && sit.def.hushWord) || r.pick(['内示', '未発表', '内密']),
+      hidePath: r.pick([['資料', 'その他', '旧', '雑'], ['保存', '予備', '古いもの', '未整理'], ['共通', '参考', '一時', 'あとで']]),
+      /* 合言葉（封を解く用・施錠用・もう使わない古いもの）と、施錠するフォルダ */
+      words: (([seal, lock, old]) => ({ seal, lock, old }))(r.shuffle(['あさがお', 'つばめ', 'こはる', 'しおかぜ', 'ひぐらし', 'ゆきどけ'])),
+      lockTarget: has('secret') && !has('vault') ? '社外秘' : '重要',
       reservePaths: [[upcoming[0]]].concat(upcoming[1].map((s) => [upcoming[0], s])),
       /* 条件に合うファイルが count 個になるまで、候補を作り替える */
       ensure(count, test, change, among) {
@@ -774,6 +799,46 @@
         .slice(0, 3).forEach((f) => (f.late = true));
     }
 
+    /* ここから先は、置き場所を変えない仕掛け（名前や見え方だけが変わる）。ほかの仕込みに使ったものは避ける */
+    const untouched = (f) => ordinary(f) && !f.ver && !f.verOf && !f.late && !f.hush && !f.cryptic && !files.some((g) => g.dupOf === f);
+    /* 奥にしまう: ふつうのファイルを 2 つ、名前に目印のあるものにする */
+    if (has('hide')) {
+      /* ほかの条項を空にしないよう、「ふつうの分け方」に落ちるものか、仲間が 2 つ以上いる条項のものから選ぶ。
+         手つかずのものが足りなければ、ほかの仕込みに使ったものからも借りる（クラウドの容量の計算に関わるものは除く） */
+      const spare = (f) => !f.dupOf && !f.verOf && !f.hush && f.doc !== x.important && firstOf(f) !== 'cloud' &&
+        (firstOf(f) === 'base' ? countOf('base') > 1 : countOf(firstOf(f)) > 1);
+      for (let i = 0; i < 2; i++) {
+        const pool = r.shuffle(files.filter(spare));
+        const pick = pool.find((f) => untouched(f) && firstOf(f) === 'base') || pool.find(untouched) || pool[0];
+        if (pick) pick.hush = '秘';
+      }
+    }
+    /* 名づけ直し: 付け直したあとの名前がぶつからないよう、年・案件・種別の組が違う 3 つを選ぶ */
+    if (has('rename')) {
+      const seen = new Set();
+      r.shuffle(files.filter(untouched)).forEach((f) => {
+        const k = `${f.year}|${f.proj}|${f.doc}`;
+        if (seen.size < 3 && !seen.has(k)) { seen.add(k); f.cryptic = '仮'; }
+      });
+    }
+    /* 封: 機密のものを 1 つは混ぜる（中身が分からないまま外に出すと危ない、という掛け合わせ） */
+    if (has('seal')) {
+      const pool = r.shuffle(files.filter((f) => !f.dupOf && !f.verOf && !f.cryptic));
+      const secret = pool.find((f) => f.secrecy === '機密');
+      [secret].concat(pool.filter((f) => f !== secret).slice(0, 2)).filter(Boolean).forEach((f) => (f.sealed = true));
+    }
+    /* 合言葉のメモ。備えつけの「控え」に最初から入っている */
+    const memoOn = has('seal') || has('lock');
+    if (memoOn) {
+      const memo = (name, word, memoFor) => files.push({
+        isMemo: true, name, word, memoFor, doc: '合言葉', proj: '—', ext: 'memo', year: 2025, month: 1,
+        author: '—', secrecy: '社内', state: '確定版', size: 1, fits: '可',
+      });
+      if (has('seal')) memo('封を解く合言葉.memo', x.words.seal, '封のかかったファイル');
+      if (has('lock')) memo(`「${x.lockTarget}」の錠の合言葉.memo`, x.words.lock, `「${x.lockTarget}」の錠`);
+      memo('去年の合言葉.memo', x.words.old, 'いまは使わないもの');
+    }
+
     /* 金庫の鍵 */
     if (has('vault')) {
       files.push({
@@ -784,8 +849,10 @@
 
     /* 名前を決める（名前から読めるのは書類の種別と案件、それに版だけ。残りは札を見る） */
     const used = {};
+    const CRYPTIC = ['scan_0412', 'IMG_2207', '無題', 'scan_0388', 'IMG_1954', '新規ドキュメント'];
+    let crypticNo = 0;
     const specs = files.map((f) => {
-      if (f.isKey) return f;
+      if (f.isKey || f.isMemo) return f;
       if (f.dupOf) f.name = 'コピー ～ ' + f.dupOf.name;
       else if (f.verOf) f.name = `${f.verOf.stem}_v${f.ver}.${f.ext}`;
       else {
@@ -793,6 +860,9 @@
         used[base] = (used[base] || 0) + 1;
         f.stem = base + (used[base] > 1 ? `_${used[base]}` : '') + (f.state === '下書き' ? '_下書き' : '');
         f.name = f.stem + (f.ver ? `_v${f.ver}` : '') + '.' + f.ext;
+        /* 仮の名前のものは中身が読めない名前に、伏せるものは名前の頭に目印を */
+        if (f.cryptic) f.name = CRYPTIC[crypticNo++ % CRYPTIC.length] + '.' + f.ext;
+        if (f.hush) f.name = x.hushWord + '_' + f.name;
       }
       if (f.dupOf) ['year', 'month', 'author', 'secrecy', 'size', 'ext', 'doc', 'proj'].forEach((k) => (f[k] = f.dupOf[k]));
       return f;
@@ -802,16 +872,24 @@
       if (f.ver) extra.ver = f.ver;
       if (f.stale) extra.stale = f.stale;
       if (has('capacity')) extra.fits = f.fits;
-      return [f.name, `${f.year}-${String(f.month).padStart(2, '0')}`, f.proj, f.doc, f.late ? '@late' : null, extra];
+      if (f.cryptic) extra.cryptic = f.cryptic;
+      if (f.hush) extra.hush = f.hush;
+      if (f.sealed) extra.sealWord = x.words.seal;
+      if (f.isMemo) { extra.word = f.word; extra.memoFor = f.memoFor; }
+      return [f.name, `${f.year}-${String(f.month).padStart(2, '0')}`, f.proj, f.doc, f.isMemo ? ['控え'] : f.late ? '@late' : null, extra];
     });
 
     /* ── 条項を組む ── */
     const basePath = b ? [a.seg, b.seg] : [a.seg];
     const rules = order.filter(has).map((k) => MECHS[k].rule(x)).concat([{ when: true, path: basePath }]);
+    /* 合言葉のメモは「控え」に置いたまま（最初からそこにある） */
+    if (memoOn) rules.unshift({ when: eq('kind', '控え'), path: ['控え'], say: '合言葉のメモ' });
     const constraints = [{ type: 'classify', rules }];
     mechs.forEach((k) => MECHS[k].more && constraints.push(...MECHS[k].more(x)));
     if (level >= 2) constraints.push({ type: 'noEmpty' });
     constraints.push({ type: 'rootClean' });
+    /* 施錠はいちばん最後（模範解も、運び終えてから閉める） */
+    constraints.sort((p, q) => (p.type === 'lockUp') - (q.type === 'lockUp'));
 
     /* ── 手紙を書く ── */
     const client = r.pick(T.clients);
@@ -836,8 +914,8 @@
       ]);
     const yearNote = [a, b].includes(AXIS.year) ? '年のフォルダは「2024年」のように「年」をつけてください。' : '';
     /* 手紙では、ふつうの分け方を先に述べ、そのあと「ただし」を優先の低いものから重ねていく */
-    const sayOrder = ['exception', 'draft', 'cloud', 'cloudSize', 'capacity', 'archive', 'secret', 'vault', 'versions', 'trash',
-      'backup', 'shortcut', 'fragile', 'mirror', 'reserve', 'opsCap', 'timer'];
+    const sayOrder = ['exception', 'draft', 'cloud', 'cloudSize', 'capacity', 'archive', 'secret', 'vault', 'hide', 'versions', 'trash',
+      'rename', 'seal', 'backup', 'shortcut', 'fragile', 'mirror', 'reserve', 'lock', 'opsCap', 'timer'];
     /* 事情のある依頼では、決まりごとの一文の前に「なぜそれが要るのか」を添える（言い換えがあればそれを使う） */
     const sayOf = (k) => {
       if (sit && sit.def.say && sit.def.say[k]) return fill(sit.def.say[k]);
@@ -847,7 +925,7 @@
     const says = sayOrder.filter(has).map(sayOf).filter(Boolean);
     /* 条項が 3 つ以上重なるときは、迷ったときの順番を依頼主の言葉で言い切る */
     const precedence = sit && rules.length >= 4
-      ? `いくつもの決まりに当てはまるものは、${rules.slice(0, -1).map((q) => `「${q.path[0]}」`).join('、')}の順に、先に当てはまったほうへ入れてください。` : '';
+      ? `いくつもの決まりに当てはまるものは、${rules.slice(0, -1).filter((q) => q.path[0] !== '控え').map((q) => `「${q.path[0]}」`).join('、')}の順に、先に当てはまったほうへ入れてください。` : '';
     const closing = level >= 2 ? r.pick(['使わない空のフォルダは残さないでください。', '余計な空フォルダは片づけておいてください。']) : '';
     /* 段落ごとに改行で区切る（画面では段落として組まれる） */
     const letter = sit ? [opener, baseSay + yearNote, ...says, precedence, closing].filter(Boolean).join('\n')
@@ -861,18 +939,33 @@
 
     const marks = {};
     mechs.forEach((k) => MECHS[k].mark && (marks[MECHS[k].mark[0]] = MECHS[k].mark[1]));
+    if (memoOn) marks['控え'] = 'memo';
 
     const lv = {
       id: `${kind}-${level}-${seed}`, generated: kind, level, chapter: 'gen',
       title: job, client, letter, trade: T.trade, scene, sceneLabel: SCENES[scene].label,
       reward: kind === 'c' ? Math.round(full * 0.3) : full,
       mechs, combos, files: fileSpecs, marks, constraints,
-      features: { copy: has('backup'), link: has('shortcut') || has('mirror') },
+      features: { copy: has('backup'), link: has('shortcut') || has('mirror'), lock: has('lock'), rename: has('rename') },
       fragileLinks: has('fragile'), timed: has('timer'),
       lateNote: has('late') ? '追伸: すみません、あとから何件か見つかりました。机の上に足しておきます。決まりは同じでお願いします。' : null,
       teach: mechs.map((k) => ({ mech: k, side: MECHS[k].side, text: MECHS[k].teach })),
     };
     if (scene !== 'desk') applyScene(lv, scene, r);
+    /* 番号づけ: いちばん上に並ぶフォルダ（備えつけを除く）を、依頼主の決めた順に並べる */
+    if (has('number')) {
+      const tmp = new G.Workspace(lv);
+      tmp.release();
+      const tops = [...new Set([...G.planFor(lv, tmp).values()].map((p) => p[0]).concat(has('reserve') ? [upcoming[0]] : []))];
+      const names = r.shuffle(tops.filter((n) => !marks[n]));
+      const at = lv.constraints.findIndex((c) => c.type === 'lockUp');
+      lv.constraints.splice(at < 0 ? lv.constraints.length : at, 0, { type: 'numbered', names });
+      const why = sit && sit.def.because.number ? fill(sit.def.because.number) : '';
+      const line = `${why}棚を開いたとき、いちばん上のフォルダが決まった順に並んでいてほしいのです。${names.map((n, i) => `${String(i + 1).padStart(2, '0')}_${n}`).join('、')} のように、頭に番号を振ってください。備えつけのフォルダはそのままで結構です。`;
+      const paras = lv.letter.split('\n');
+      paras.splice(paras.length - 1, 0, line);
+      lv.letter = paras.join('\n');
+    }
     /* 傾向は、出てくる要素の向きを数えて決める */
     const t = tendencyOf(mechs, sit && sit.def.tend, sit && sit.def.core);
     lv.tend = t.tend;
@@ -887,6 +980,9 @@
       lv.level = gradeOf(lv.strain);
       lv.reward = 20 + 10 * mechs.length + 4 * combos + 4 * lv.level;
     }
+    /* 機密をクラウドに置いたときの扱い。低い格では納品のときに差し戻し、
+       格 13 からは置いた時点で警告が出て、すぐ直さなければ（または二度目で）その場で失敗 */
+    lv.alarm = has('cloud') ? (lv.level >= 13 ? 'warn' : 'deadline') : null;
     /* 手と理の重さ（1〜10）は、出来上がった依頼の中身から測る */
     Object.assign(lv, G.rate(lv, {
       hand: mechs.filter((k) => MECHS[k].side === 'hand').length,
@@ -903,7 +999,7 @@
     ws.release();
     const rules = lv.constraints[0].rules.slice(0, -1);
     const files = ws.originals();
-    const contested = files.filter((f) => rules.filter((q) => G.match(q.when, f)).length >= 2).length;
+    const contested = G.withRaw(() => files.filter((f) => rules.filter((q) => G.match(q.when, f)).length >= 2).length);
     const others = lv.constraints.filter((c) => ['backup', 'shortcut', 'forbid', 'reserve', 'opsLimit', 'numbered', 'fileName', 'lockUp'].includes(c.type)).length;
     const has = (k) => lv.mechs.includes(k);
     const tricks = (has('fragile') ? 1.5 : 0) + (has('timer') ? 1 : 0) + (has('late') ? 1.5 : 0) + (has('vault') ? 2 : 0) +
