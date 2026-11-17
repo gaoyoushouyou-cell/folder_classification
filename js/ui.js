@@ -30,7 +30,7 @@
       h('em', {}, n));
   const stars = (n) => h('span', { class: 'stars', 'aria-label': `星 ${n} / 3` }, '★'.repeat(n), h('span', { class: 'off' }, '★'.repeat(3 - n)));
   const bar = (v, side) => h('span', { class: 'bar ' + (side || '') }, h('i', { style: `width:${Math.round((v || 0) * 100)}%` }));
-  const KIND_CLASS = { 画像: 'k-img', 文書: 'k-doc', 表: 'k-tab', 音声: 'k-snd', 鍵: 'k-key' };
+  const KIND_CLASS = { 画像: 'k-img', 文書: 'k-doc', 表: 'k-tab', 音声: 'k-snd', 鍵: 'k-key', 控え: 'k-memo' };
   const KIND_NAME = { w: '飛び込み', c: '稽古', a: '広告', s: '事情' };
 
   /* ══════════ 手引き ══════════
@@ -53,7 +53,7 @@
     const all = guideEntries();
     const card = (g) => h('details', { class: 'guide-item ' + g.side, id: 'g-' + g.key, open: g.key === focus },
       h('summary', {}, h('span', { class: 'tag ' + g.side }, g.side === 'hand' ? '手' : '理'), h('b', {}, g.label),
-        g.min ? h('small', {}, `格 ${g.min}〜`) : null),
+        g.min ? h('small', {}, g.min > G.gen.MAX_LEVEL ? '事情のある依頼で' : `格 ${g.min}〜`) : null),
       h('p', {}, g.text));
     if (!keys) {
       return h('div', {},
@@ -277,7 +277,10 @@
       h('span', { class: 'job-foot' },
         open ? h('span', {}, h('b', {}, L.reward), ' 文') : h('span', {}, '—'),
         L.generated ? h('span', { class: 'job-scale', title: `${L.trade}・${L.sceneLabel}／決まりごと ${L.mechs.length}・取り合い ${L.contested}・ファイル ${L.files.length}` },
-          `ファイル ${L.files.length}`, L.contested ? `・取り合い ${L.contested}` : '') : null,
+          `ファイル ${L.files.length}`, L.contested ? `・取り合い ${L.contested}` : '',
+          /* 手数の上限が「1 つずつ運ぶ目安」より低い依頼は、道具がないと納められない */
+          G.needsTools(L) ? h('b', { class: 'need-tools', title: `手数の上限 ${G.opsLimit(L)} 手（1 つずつ運ぶと ${G.computePar(L)} 手、道具をすべて使うと ${G.computeIdeal(L)} 手）。設計図・まとめ掴みか仕分け札・複写機などが要ります` }, '道具必須') : null,
+          L.alarm === 'warn' ? h('b', { class: 'need-tools', title: '機密をクラウドに置くと警告が出ます。すぐ直さないか、二度目で、その場で失敗になります' }, '通報あり') : null) : null,
         e && e.passed ? stars(e.stars) : null),
       e && e.passed ? h('span', { class: 'job-stamp', 'aria-hidden': 'true' }, '済') : null);
     if (!onRemove) return card;
@@ -383,6 +386,9 @@
       level, ws: new G.Workspace(level), par: G.computePar(level), attempts: 0, lastEval: null,
       selected: new Set(), inspected: null, renaming: null, deskSort: null,
       folded: new Set(), caps: new Set(level.grants || []), controls: [], panel: null, tut: 0, off: [],
+      notes: [],      // 控え帳に写した合言葉 { word, memoFor }
+      warned: false,  // 機密をクラウドに置いて、すでに一度警告を受けた
+      alert: null,    // いま出ている警告（直すまで消えない）
     };
     const ctx = {
       ws: S.ws, level, caps: S.caps, bus: G.bus,
@@ -392,19 +398,24 @@
         closePanel: () => { S.panel = null; drawPanel(); },
         toast, refresh, selection: () => [...S.selected],
         setDeskSort: (a) => { S.deskSort = a; drawDesk(); },
-        setDeskFilter: (q) => { S.filter = q.trim(); drawDesk(); },
+        setDeskFilter: (q) => { S.filter = q.trim(); drawDesk(); if (S.caps.has('locate')) drawShelf(); },
         visibleDesk: () => deskFiles().map((f) => f.id),
         select: (ids) => { S.selected = new Set(ids); S.inspected = ids.length === 1 ? ids[0] : null; refresh(); },
+        reveal,
       },
     };
     G.tools.list.filter((t) => P().owns(t.id)).forEach((t) => S.off.push(t.setup(ctx)));
     S.half = Math.ceil(S.ws.children('desk').length / 2);
     S.off.push(G.bus.on('ws:change', (d) => {
+      /* 目安や理論値の計算は、別の棚（模範解用）を動かす。いまの依頼の棚の変化だけを見る */
+      if (d.ws !== S.ws) return;
       /* 砂時計は、最初に手を動かしたときから進む */
       if (!S.t0 && d.cmd !== 'release') S.t0 = Date.now();
       /* 机の上が半分片づいたら、追加のファイルが届く */
       if (S.ws.pending().length && S.ws.children('desk').length <= S.half) return arrive();
-      S.stale = true; prune(); tutEvent('ws:change', d); refresh(); }));
+      S.stale = true; prune();
+      if (checkAlarm()) return; // 通報されて、その場で失敗
+      tutEvent('ws:change', d); refresh(); }));
     S.off.push(G.bus.on('ui:inspect', (d) => tutEvent('ui:inspect', d)));
     S.off.push(G.bus.on('ui:submit', (d) => tutEvent('ui:submit', d)));
     /* 経過時間は、納期のあるなしに関わらず毎秒描き直す */
@@ -417,6 +428,8 @@
     level.constraints.forEach((c) => {
       const paths = (c.rules || []).map((r) => r.path).concat(c.paths || [], c.path ? [c.path] : []);
       paths.forEach((p) => p.forEach((seg) => !seg.includes('{') && hints.add(seg)));
+      /* 番号づけのある依頼では、番号つきの名前も候補に出す */
+      (c.names || []).forEach((n, i) => hints.add(`${String(i + 1).padStart(2, '0')}_${n}`));
     });
 
     $('app').replaceChildren(
@@ -436,6 +449,7 @@
         (level.mechs || []).length ? h('div', { class: 'keys', role: 'toolbar', 'aria-label': 'この依頼の要素' },
           level.mechs.map((k) => h('button', { class: 'key ' + G.gen.MECHS[k].side, onclick: () => showGuide(k) }, G.gen.MECHS[k].label))) : null,
         h('div', { id: 'tut' }),
+        h('div', { id: 'alarm', role: 'alert' }),
         h('div', { class: 'grid' },
           h('section', { class: 'side hand' },
             h('div', { class: 'side-head' },
@@ -467,8 +481,87 @@
 
   function refresh() {
     if (!S) return;
-    drawMeter(); drawBelt(); drawDesk(); drawShelf(); drawSlip(); drawSpec(); drawTut(); drawPanel();
+    drawMeter(); drawBelt(); drawDesk(); drawShelf(); drawSlip(); drawSpec(); drawTut(); drawAlarm(); drawPanel();
   }
+
+  /* ── 通報: 機密をクラウドに置いたとき ──
+   * 低い格（alarm='deadline'）では納品のときに差し戻されるだけ。
+   * 高い格（alarm='warn'）では、置いた時点で警告が出る。次の操作で直っていなければ失敗。二度目は警告なしで失敗。
+   * 戻り値: その場で失敗にしたら true */
+  function leaked() {
+    return G.withRaw(() => S.level.constraints.filter((c) => c.type === 'forbid').reduce((out, c) => {
+      const zone = S.ws.findFolder(c.under);
+      return out.concat(zone ? S.ws.files().filter((f) => f.role !== 'link' && G.match(c.when, f) && S.ws.isInside(f.id, zone)) : []);
+    }, []));
+  }
+  function checkAlarm() {
+    if (S.level.alarm !== 'warn' || S.failed) return false;
+    const bad = leaked();
+    if (!bad.length) { S.alert = null; return false; }
+    if (S.alert) return failNow(`警告のあとも、機密のファイル「${bad[0].name}」がクラウドに残っていました。`);
+    if (S.warned) return failNow(`機密のファイル「${bad[0].name}」を、もう一度クラウドに置きました。`);
+    S.warned = true;
+    S.alert = bad[0].name;
+    return false;
+  }
+  function drawAlarm() {
+    $('alarm').replaceChildren(S.alert ? h('div', { class: 'alarm' },
+      h('b', {}, '警告'),
+      h('p', {}, `機密のファイル「${S.alert}」がクラウドにあります。次の操作で必ず外へ出してください（「ひとつ戻す」でも構いません）。ほかの操作をするか、もう一度同じことが起きると、通報されてこの依頼は失敗になります。`)) : null);
+  }
+  function failNow(reason) {
+    S.failed = true;
+    S.done = true;
+    S.tEnd = Date.now();
+    refresh();
+    $('overlay').replaceChildren(h('div', { class: 'veil' }, h('div', { class: 'report', role: 'alertdialog', 'aria-label': '通報' },
+      h('div', { class: 'report-head' },
+        h('div', {}, h('small', {}, S.level.client), h('h2', {}, '通報'), h('p', {}, S.level.title)),
+        h('div', { class: 'stamp fail' }, '失敗')),
+      h('section', { class: 'report-sec' },
+        h('p', {}, reason),
+        h('p', {}, '外から見える場所に機密が置かれたことが依頼主に伝わり、この依頼は打ち切られました。報酬はありません。最初からやり直せます。')),
+      h('div', { class: 'report-actions' },
+        h('button', { class: 'btn primary', onclick: () => go('play', S.level.id) }, '最初からやり直す'),
+        h('button', { class: 'btn', onclick: () => go('home') }, '受付へ戻る')))));
+    $('overlay').querySelector('.btn').focus();
+    return true;
+  }
+
+  /* ── 控え帳と合言葉 ── */
+  function noteDown(f) {
+    if (S.notes.some((n) => n.word === f.attrs.word)) return toast('もう控え帳に写してあります');
+    S.notes.push({ word: f.attrs.word, memoFor: f.attrs.memoFor });
+    toast(`合言葉「${f.attrs.word}」を控え帳に写しました`);
+    refresh();
+  }
+  /* 合言葉を控え帳から選ぶ小窓。選ぶと onPick(word) が呼ばれる */
+  function pickWord(title, onPick) {
+    S.panel = {
+      title,
+      render: () => h('div', { class: 'rule-form' },
+        S.notes.length ? h('p', {}, '控え帳から選びます。') : h('p', { class: 'empty' }, '控え帳はまだ空です。「控え」の中のメモを押して、合言葉を写します。'),
+        S.notes.map((n) => h('button', { class: 'btn word', onclick: () => { S.panel = null; onPick(n.word); refresh(); } },
+          h('b', {}, n.word), h('small', {}, n.memoFor + '用')))),
+    };
+    drawPanel();
+  }
+
+  /* 所在札: そのファイルのある場所まで棚を開き、送り、しばらく光らせる */
+  function reveal(id) {
+    const f = S.ws.node(id);
+    if (!f) return;
+    for (let n = S.ws.node(f.parent); n; n = S.ws.node(n.parent)) S.folded.delete(n.id);
+    S.selected = new Set([id]);
+    S.inspected = id;
+    refresh();
+    const el = document.querySelector(`[data-drag-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1600);
+  }
+  const whereIs = (f) => (f.parent === 'desk' ? '机の上' : ['納品棚'].concat(S.ws.folderPath(f.parent)).join(' ▸ '));
 
   /* 追加のファイルが届く */
   function arrive() {
@@ -491,33 +584,41 @@
       h('span', { class: 'timer', title: '最初に手を動かしたときから計ります。読んで考える時間は含みません' },
         h('small', {}, '経過'), h('strong', {}, clock(elapsed()))),
       h('small', {}, '手数'), h('strong', { class: cap && S.ws.ops > cap ? 'over' : '' }, S.ws.ops),
-      h('span', { title: cap ? `目安 ${S.par} 手・上限 ${cap} 手` : `目安 ${S.par} 手` }, ` / ${S.par}`, cap ? `・上限 ${cap}` : ''));
+      h('span', { title: cap ? `1 つずつ運ぶ目安 ${S.par} 手・道具をすべて使った理論値 ${G.computeIdeal(S.level)} 手・上限 ${cap} 手` : `1 つずつ運ぶ目安 ${S.par} 手・道具をすべて使った理論値 ${G.computeIdeal(S.level)} 手` }, ` / ${S.par}`, cap ? `・上限 ${cap}` : ''));
     $('undo').disabled = !S.ws.history.length;
   }
   /* 道具を持っていないあいだは、帯そのものを出さない */
   function drawBelt() {
-    $('belt').hidden = !S.controls.length;
-    $('belt').replaceChildren(S.controls);
+    const book = S.notes.length ? h('span', { class: 'notebook', title: '控え帳に写した合言葉' },
+      h('b', {}, '控え帳'), S.notes.map((n) => h('i', { title: n.memoFor + '用' }, n.word))) : null;
+    $('belt').hidden = !S.controls.length && !book;
+    $('belt').replaceChildren(S.controls, book);
   }
 
   function fileChip(f, messy) {
     const tilt = messy ? `transform: rotate(${(hash(f.id + f.name) % 9) - 4}deg) translateY(${(hash(f.name) % 7) - 3}px)` : '';
     return h('div', {
-      class: `file ${KIND_CLASS[f.attrs.kind] || ''}` + (S.selected.has(f.id) ? ' sel' : '') + (f.role ? ' ref-' + f.role : '') + (f.broken ? ' broken' : ''),
+      class: `file ${KIND_CLASS[f.attrs.kind] || ''}` + (S.selected.has(f.id) ? ' sel' : '') + (f.role ? ' ref-' + f.role : '') + (f.broken ? ' broken' : '') +
+        (f.sealed ? ' sealed' : '') + (!messy && S.filter && S.caps.has('locate') && !found(f) ? ' dim' : ''),
       'data-drag-id': f.id, 'data-file': true, style: tilt,
-      title: f.role === 'copy' ? '写し: ' + f.name : f.role === 'link' ? '近道: ' + f.name : f.name,
-    }, h('span', { class: 'kind' }, f.broken ? '切' : f.role === 'copy' ? '写' : f.role === 'link' ? '近' : f.attrs.kind[0]),
+      title: (f.sealed ? '封がかかっています: ' : f.role === 'copy' ? '写し: ' : f.role === 'link' ? '近道: ' : '') + f.name + (f.orig ? `（元の名前: ${f.orig}）` : ''),
+    }, h('span', { class: 'kind' }, f.broken ? '切' : f.sealed ? '封' : f.role === 'copy' ? '写' : f.role === 'link' ? '近' : f.attrs.kind[0]),
     h('span', { class: 'fname' }, f.name));
   }
+
+  /* 虫めがねの言葉に当てはまるか。名前（元の名前も）と、札に出ている中身を見る。封の中は見えない */
+  function found(f) {
+    const q = S.filter.normalize('NFKC').toLowerCase();
+    return !q || [f.name, f.orig || ''].concat(Object.keys(G.attrs).filter((k) => !G.attrs[k].hidden).map((k) => G.fmtAttr(k, G.attr(f, k))))
+      .some((v) => String(v).normalize('NFKC').toLowerCase().includes(q));
+  }
+  /* 名前順（番号づけのある依頼では、頭の番号がそのまま並びを決める） */
+  const byName = (list) => list.slice().sort((p, q) => p.name.localeCompare(q.name, 'ja', { numeric: true }));
 
   /* 机の上に見えているファイル（虫めがねの絞り込みと、並べ札の順を反映） */
   function deskFiles() {
     let files = S.ws.children('desk');
-    const q = S.filter.normalize('NFKC').toLowerCase();
-    if (q) {
-      files = files.filter((f) => [f.name].concat(Object.keys(G.attrs).filter((k) => !G.attrs[k].hidden).map((k) => G.fmtAttr(k, G.attr(f, k))))
-        .some((v) => String(v).normalize('NFKC').toLowerCase().includes(q)));
-    }
+    if (S.filter) files = files.filter(found);
     const a = S.deskSort;
     if (a) {
       files = files.slice().sort((x, y) =>
@@ -563,7 +664,15 @@
     const folded = S.folded.has(d.id) && !renaming;
     const inside = S.ws.subtreeFiles(d.id).length;
     const mk = d.mark && G.marks[d.mark];
-    return h('div', { class: 'folder' + (folded ? ' folded' : '') + (mk ? ' marked mark-' + d.mark : ''), 'data-drop-id': d.id, 'data-drag-id': d.id },
+    /* 施錠: 施錠の要る依頼では、見出しに錠のボタンを出す。施錠中は出し入れできない */
+    const lockBtn = d.shut
+      ? h('button', { class: 'mini shut', title: '施錠中。押すと開ける（1 手）', 'aria-label': `「${d.name}」を開ける`, onclick: () => S.ws.unlock(d.id) }, '錠')
+      : (S.level.features || {}).lock && !mk
+        ? h('button', {
+          class: 'mini', title: '合言葉を選んで施錠する（1 手）', 'aria-label': `「${d.name}」を施錠する`,
+          onclick: () => pickWord(`「${d.name}」を施錠する`, (word) => S.ws.lock(d.id, word)),
+        }, '錠') : null;
+    return h('div', { class: 'folder' + (folded ? ' folded' : '') + (mk ? ' marked mark-' + d.mark : '') + (d.shut ? ' is-shut' : ''), 'data-drop-id': d.id, 'data-drag-id': d.id },
       h('div', { class: 'folder-tab', title: mk ? `備えつけ: ${mk.note}` : null },
         mk ? h('span', { class: 'mark-sign', 'aria-hidden': 'true' }, d.mark === 'vault' && !S.ws.lockedVault(d.id) ? '開' : mk.sign) : null,
         h('button', {
@@ -574,9 +683,10 @@
         name, h('small', { class: 'folder-count', title: 'この中のファイルの数' }, inside),
         d.locked ? null : h('button', { class: 'mini', title: '名前を変える', 'aria-label': `「${d.name}」の名前を変える`, onclick: () => beginRename(d.id) }, '名'),
         h('button', { class: 'mini', title: 'この中にフォルダを作る', 'aria-label': `「${d.name}」の中にフォルダを作る`, onclick: () => addFolder(d.id) }, '＋'),
-        d.locked ? null : h('button', { class: 'mini', title: '片づける（中のファイルは机へ戻る）', 'aria-label': `「${d.name}」を片づける`, onclick: () => S.ws.removeFolder(d.id) }, '×')),
+        lockBtn,
+        d.locked || d.shut ? null : h('button', { class: 'mini', title: '片づける（中のファイルは机へ戻る）', 'aria-label': `「${d.name}」を片づける`, onclick: () => S.ws.removeFolder(d.id) }, '×')),
       folded ? null : h('div', { class: 'folder-body' },
-        kids.filter((k) => k.type === 'folder').map(folderEl),
+        byName(kids.filter((k) => k.type === 'folder')).map(folderEl),
         kids.filter((k) => k.type === 'file').map((f) => fileChip(f, false)),
         kids.length ? null : h('span', { class: 'empty' }, '空')));
   }
@@ -584,7 +694,7 @@
   function drawShelf() {
     const kids = S.ws.children('root');
     $('shelf').replaceChildren(
-      kids.filter((k) => k.type === 'folder').map(folderEl),
+      byName(kids.filter((k) => k.type === 'folder')).map(folderEl), // 棚は名前順に並ぶ
       h('div', { class: 'loose' }, kids.filter((k) => k.type === 'file').map((f) => fileChip(f, false))),
       kids.length ? null : h('p', { class: 'empty' }, '「＋ フォルダ」で引き出しを作ります'));
     const all = S.ws.folders();
@@ -627,19 +737,68 @@
     }
     const a = f.attrs;
     const cell = (label, v) => h('div', {}, h('dt', {}, label), h('dd', {}, v));
-    const shown = Object.keys(G.attrs).filter((k) => G.attrs[k].slip && a[k] != null);
+    /* 封のかかったファイルは、読める属性（種類・サイズ）だけが出る */
+    const shown = Object.keys(G.attrs).filter((k) => G.attrs[k].slip && G.attr(f, k) != null);
     const feat = S.level.features || {};
     const src = f.role && S.ws.node(f.src);
-    $('slip').replaceChildren(h('div', { class: 'slip-card' + (f.role ? ' is-ref' : '') },
+    const isMemo = a.kind === '控え';
+    const dot = f.name.lastIndexOf('.');
+    /* 名前を付け直しているあいだは、名前のところが入力欄になる（拡張子は変えない） */
+    const nameEl = S.naming === f.id
+      ? h('span', { class: 'slip-rename' },
+        h('input', {
+          class: 'rename', id: 'file-rename', value: f.name.slice(0, dot), 'aria-label': 'ファイル名（拡張子を除く）', maxlength: 40,
+          onkeydown: (e) => {
+            if (e.isComposing) return;
+            if (e.key === 'Enter') commitFileName(f, e.target.value);
+            if (e.key === 'Escape') { S.naming = null; drawSlip(); }
+          },
+        }), f.name.slice(dot),
+        h('button', { class: 'btn small', onclick: (e) => commitFileName(f, e.target.parentNode.querySelector('input').value) }, '決める'))
+      : h('strong', { class: 'slip-name' }, f.name);
+    const more = [
+      /* 元の名前と、たどってきた名前。いつでも元に戻せる */
+      f.orig ? h('p', { class: 'slip-trail' }, h('b', {}, '名前の履歴'), (f.names || [f.orig, f.name]).join(' → '),
+        f.name !== f.orig ? h('button', { class: 'btn small ghost', onclick: () => S.ws.rename(f.id, f.orig) }, '元の名前に戻す') : null) : null,
+      S.caps.has('locate') ? h('p', { class: 'slip-trail' }, h('b', {}, 'いまの場所'), whereIs(f),
+        f.parent !== 'desk' ? h('button', { class: 'btn small ghost', onclick: () => reveal(f.id) }, 'そこを開く') : null,
+        src ? [h('b', {}, f.role === 'copy' ? '　原本の場所' : '　本体の場所'), whereIs(src), h('button', { class: 'btn small ghost', onclick: () => reveal(src.id) }, 'そこを開く')] : null) : null,
+    ];
+    if (isMemo) {
+      $('slip').replaceChildren(h('div', { class: 'slip-card is-memo' },
+        h('div', { class: 'slip-top' }, h('strong', { class: 'slip-name' }, f.name),
+          h('span', { class: 'slip-actions' }, h('button', { class: 'btn small logic', onclick: () => noteDown(f) }, '控え帳に写す'))),
+        h('p', { class: 'memo-body' }, `${a.memoFor}の合言葉は「`, h('b', {}, a.word), '」')));
+      return;
+    }
+    $('slip').replaceChildren(h('div', { class: 'slip-card' + (f.role ? ' is-ref' : '') + (f.sealed ? ' is-sealed' : '') },
       h('div', { class: 'slip-top' },
-        h('strong', { class: 'slip-name' }, f.name),
+        nameEl,
+        f.sealed ? h('span', { class: 'slip-role broken' }, '封がかかっています') : null,
         f.broken ? h('span', { class: 'slip-role broken', title: '本体を動かしたため切れました。捨てて作り直します' }, '切れています') : null,
         f.role ? h('span', { class: 'slip-role' }, f.role === 'copy' ? `「${src ? src.name : '原本'}」の写し` : `「${src ? src.name : '本体'}」への近道`) : null,
         h('span', { class: 'slip-actions' },
           !f.role && feat.copy ? h('button', { class: 'btn small', title: '写しを机の上につくる', onclick: () => refOf(f, 'copy') }, '写しをとる') : null,
           !f.role && feat.link ? h('button', { class: 'btn small', title: '近道を机の上につくる', onclick: () => refOf(f, 'link') }, '近道をつくる') : null,
+          f.sealed ? h('button', {
+            class: 'btn small logic', title: '合言葉を選んで封を解く（1 手）',
+            onclick: () => pickWord('封を解く', (word) => { if (!S.ws.unseal(f.id, word)) toast('その合言葉では開きませんでした'); }),
+          }, '封を解く') : null,
+          !f.role && (feat.rename || f.orig) && S.naming !== f.id
+            ? h('button', { class: 'btn small', title: 'ファイルの名前を付け直す（1 手）', onclick: () => { S.naming = f.id; drawSlip(); } }, '名前を変える') : null,
           f.role ? h('button', { class: 'btn small', onclick: () => S.ws.removeRef(f.id) }, '捨てる') : null)),
-      h('dl', {}, cell('日付', `${a.year}年${a.month}月`), shown.map((k) => cell(G.attrs[k].label, G.fmtAttr(k, a[k]))))));
+      h('dl', {}, f.sealed ? null : cell('日付', `${a.year}年${a.month}月`), shown.map((k) => cell(G.attrs[k].label, G.fmtAttr(k, a[k]))),
+        f.sealed ? cell('そのほか', '封を解くまで読めません') : null),
+      more));
+    const input = $('file-rename');
+    if (input) { input.focus(); input.select(); }
+  }
+  function commitFileName(f, value) {
+    S.naming = null;
+    const stem = String(value || '').trim();
+    const dot = f.name.lastIndexOf('.');
+    if (stem && stem + f.name.slice(dot) !== f.name) { S.ws.rename(f.id, stem + f.name.slice(dot)); return; } // ws:change で描き直される
+    drawSlip();
   }
   function refOf(f, role) {
     const id = S.ws.makeRef(f.id, role);

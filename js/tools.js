@@ -208,4 +208,77 @@
       }, '設計図から骨組みを起こす'));
     },
   });
+
+  /* ══ 手数を束ねる道具・場所を見失わないための道具 ══ */
+  G.tools.register({
+    id: 'shozai', name: '所在札', side: 'hand', price: 40,
+    blurb: 'ファイルの札に、いまある場所が出る。押すとその場所まで棚が開く。虫めがねがあれば、棚の中も探せる。',
+    setup(ctx) { ctx.caps.add('locate'); },
+  });
+
+  G.tools.register({
+    id: 'fukusha', name: '複写機', side: 'hand', price: 130,
+    blurb: '選んだファイルから、写しか近道をまとめて 1 手で作る。写し・近道は切り替えて使う。',
+    setup(ctx) {
+      const feat = ctx.level.features || {};
+      const modes = [['copy', '写し', feat.copy], ['link', '近道', feat.link]].filter((m) => m[2]);
+      if (!modes.length) return; // 写しも近道も要らない依頼では出さない
+      const sel = h('select', { 'aria-label': '複写機で作るもの' }, modes.map(([v, label]) => h('option', { value: v }, label)));
+      const run = () => {
+        const ids = ctx.ui.selection().filter((id) => { const f = ctx.ws.node(id); return f && f.type === 'file' && !f.role; });
+        if (!ids.length) return ctx.ui.toast('先に、もとになるファイルを選びます');
+        const made = [];
+        ctx.ws.batch(() => ids.forEach((id) => made.push(ctx.ws.makeRef(id, sel.value))), 'copier');
+        ctx.ui.select(made.filter(Boolean));
+        ctx.ui.toast(`${made.length} 個の${sel.value === 'copy' ? '写し' : '近道'}を 1 手で作りました。机の上にあります`);
+      };
+      ctx.ui.addControl(h('label', { class: 'belt-item' }, '複写機', sel,
+        h('button', { class: 'btn small', onclick: run }, '選んだものから作る')));
+    },
+  });
+
+  G.tools.register({
+    id: 'nazuke', name: '名づけ札', side: 'logic', price: 150,
+    blurb: 'ひとつの置き場にあるファイルの名前を、札の中身をつないだ形にまとめて付け直す。束は 1 手。',
+    setup(ctx) {
+      /* はじめは「選んでいるものだけ」。置き場のすべてを付け直すと、重複や版の手がかり（名前）まで消えてしまうため */
+      const st = { place: 'desk', parts: ['year', 'proj', 'doc'], onlySelected: true };
+      const again = () => ctx.ui.refresh();
+      const usable = () => attrsIn(ctx.ws).filter((a) => !['ext', 'kind', 'size', 'month', 'ver'].includes(a));
+      function render() {
+        if (!ctx.ws.node(st.place)) st.place = 'desk';
+        const picked = new Set(ctx.ui.selection());
+        const nameFor = (f) => {
+          const vals = st.parts.filter(Boolean).map((a) => G.attr(f, a));
+          return vals.length && vals.every((v) => v != null) ? `${vals.join('_')}.${f.attrs.ext}` : null; // 封の中は読めないので付けられない
+        };
+        const targets = ctx.ws.children(st.place)
+          .filter((f) => f.type === 'file' && !f.role && (!st.onlySelected || picked.has(f.id)) && nameFor(f) && nameFor(f) !== f.name);
+        return h('div', { class: 'rule-form' },
+          h('label', { class: 'rule-field' }, h('b', {}, '置き場'),
+            h('select', { onchange: (e) => { st.place = e.target.value; again(); } },
+              h('option', { value: 'desk', selected: st.place === 'desk' }, '机の上'),
+              ctx.ws.folders().map((d) => h('option', { value: d.id, selected: d.id === st.place }, ctx.ws.folderPath(d.id).join(' ▸ '))))),
+          h('div', { class: 'rule-field' }, h('b', {}, '名前の形（「_」でつなぐ）'),
+            h('span', { class: 'row' }, [0, 1, 2].map((i) => h('select', {
+              'aria-label': `${i + 1} つめ`, onchange: (e) => { st.parts[i] = e.target.value || null; again(); },
+            }, h('option', { value: '', selected: !st.parts[i] }, '（なし）'),
+            usable().map((a) => h('option', { value: a, selected: a === st.parts[i] }, G.attrs[a].label)))))),
+          h('label', { class: 'check' },
+            h('input', { type: 'checkbox', checked: st.onlySelected, onchange: (e) => { st.onlySelected = e.target.checked; again(); } }),
+            '選んでいるものだけ'),
+          h('p', { class: 'rule-count' }, `付け直すファイル: ${targets.length} 個`,
+            targets[0] ? h('small', {}, `　例: ${targets[0].name} → ${nameFor(targets[0])}`) : null),
+          h('button', {
+            class: 'btn logic', disabled: !targets.length,
+            onclick: () => {
+              const n = targets.length;
+              ctx.ws.batch(() => targets.forEach((f) => ctx.ws.rename(f.id, nameFor(f))), 'rename');
+              ctx.ui.toast(`${n} 個の名前を 1 手で付け直しました。元の名前は札に残っています`);
+            },
+          }, 'この形で付け直す'));
+      }
+      ctx.ui.addControl(h('button', { class: 'btn logic small', onclick: () => ctx.ui.openPanel({ title: '名づけ札', render }) }, '名づけ札'));
+    },
+  });
 })();
