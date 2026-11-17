@@ -62,7 +62,9 @@
   G.renderPath = (tpl, file) => tpl.map((seg) => seg.replace(/\{(\w+)\}/g, (_, a) => G.attr(file, a)));
   G.describePath = (tpl) =>
     tpl.map((seg) => '「' + seg.replace(/\{(\w+)\}/g, (_, a) => `〈${G.attrs[a].label}〉`) + '」').join(' の中の ');
-  const samePath = (a, b) => a && b && a.length === b.length && a.every((s, i) => norm(s) === norm(b[i]));
+  /* 番号づけのある依頼では、いちばん上のフォルダの頭の「NN_」は無視して比べる（ws.key） */
+  const samePath = (a, b, ws) => a && b && a.length === b.length &&
+    a.every((s, i) => (ws ? ws.key(s, i) === ws.key(b[i], i) : norm(s) === norm(b[i])));
   const where = (p) => (p == null ? '机の上' : p.length ? p.join(' ▸ ') : '納品棚の直下');
 
   /* ---------- 条項の型の登録簿 ----------
@@ -108,7 +110,7 @@
         if (!exp) return;
         n++;
         const p = ws.pathOf(f.id);
-        if (samePath(p, exp)) ok++;
+        if (samePath(p, exp, ws)) ok++;
         else violations.push(`「${f.name}」の置き場所が条項と合いません（いま: ${where(p)}）`);
       });
       return { score: n ? ok / n : 1, violations };
@@ -304,6 +306,17 @@
       ws.originals().filter((f) => G.match(c.when, f)).forEach((f) =>
         ws.move(ws.makeRef(f.id, role), ws.ensurePath(G.renderPath(c.path, f), true)));
     },
+    /* 道具「複写機」を使えば、まとめて 1 手で作り、置き場ごとに束で運べる */
+    ideal(c, ws) {
+      const need = ws.originals().filter((f) => G.match(c.when, f));
+      if (!need.length) return;
+      const byHome = new Map();
+      ws.batch(() => need.forEach((f) => {
+        const home = ws.ensurePath(G.renderPath(c.path, f), true);
+        byHome.set(home, (byHome.get(home) || []).concat([ws.makeRef(f.id, role)]));
+      }), 'copier');
+      byHome.forEach((ids, home) => ws.move(ids, home));
+    },
   });
   reg('backup', refType('copy', '写し', '写しをとって'));
   reg('shortcut', refType('link', '近道', '近道をつくって'));
@@ -323,14 +336,83 @@
     },
   });
 
-  /* 手数の上限: 目安の手数の factor 倍まで。gate=true の条項は、満たさないと充足度に関係なく差し戻し */
+  /* 番号づけ: 棚は名前順に並ぶ。いちばん上のフォルダを決まった順に並べるには、頭に「NN_」を振る */
+  const pad2 = (i) => String(i + 1).padStart(2, '0');
+  reg('numbered', {
+    skill: 'rule', weight: 3,
+    describe: (c) => ({
+      title: '並び',
+      lines: ['いちばん上のフォルダは、この順に並ぶよう頭に番号を振る: ' + c.names.map((n, i) => `${pad2(i)}_${n}`).join('、') + '（備えつけのフォルダはそのまま）'],
+    }),
+    evaluate(c, ws) {
+      const tops = ws.children('root').filter((d) => d.type === 'folder');
+      const violations = [];
+      c.names.forEach((n, i) => {
+        if (!tops.some((d) => norm(d.name) === norm(`${pad2(i)}_${n}`))) violations.push(`「${n}」に ${pad2(i)} の番号がついていません`);
+      });
+      return { score: 1 - violations.length / c.names.length, violations };
+    },
+    extra(c, ws) {
+      c.names.forEach((n, i) => { const id = ws.findFolder([n]); if (id) ws.rename(id, `${pad2(i)}_${n}`); });
+    },
+  });
+
+  /* 名づけ直し: 条件に合うファイルの名前を、決まった形（属性を「_」でつないだもの）に付け直す */
+  reg('fileName', {
+    skill: 'rule', weight: 3, early: true,
+    want: (c, f) => `${G.renderPath([c.template], f)[0]}.${f.attrs.ext}`,
+    describe(c, ws) {
+      const shape = c.template.replace(/\{(\w+)\}/g, (_, a) => `〈${G.attrs[a].label}〉`);
+      const sample = ws && ws.originals().find((f) => G.match(c.when, f));
+      return { title: '名づけ', lines: [`${c.say || G.describePred(c.when)} → 名前を「${shape}」の形に付け直す（拡張子はそのまま${sample ? `。例: ${this.want(c, sample)}` : ''}）`] };
+    },
+    evaluate(c, ws) {
+      const need = ws.originals().filter((f) => G.match(c.when, f));
+      const bad = need.filter((f) => norm(f.name) !== norm(this.want(c, f)));
+      return { score: need.length ? 1 - bad.length / need.length : 1, violations: bad.map((f) => `「${f.name}」の名前が、決まった形になっていません`) };
+    },
+    extra(c, ws) { ws.originals().filter((f) => G.match(c.when, f)).forEach((f) => ws.rename(f.id, this.want(c, f))); },
+    /* 道具「名づけ札」を使えば、置き場所ごとに束で付け直せる */
+    ideal(c, ws) {
+      const byPlace = new Map();
+      ws.originals().filter((f) => G.match(c.when, f)).forEach((f) => byPlace.set(f.parent, (byPlace.get(f.parent) || []).concat([f])));
+      byPlace.forEach((fs) => ws.batch(() => fs.forEach((f) => ws.rename(f.id, this.want(c, f))), 'rename'));
+    },
+  });
+
+  /* 施錠: 運び終えたフォルダを、決められた合言葉で閉める */
+  reg('lockUp', {
+    skill: 'ops', weight: 3,
+    describe: (c) => ({ title: '施錠', lines: [`運び終えたら${pathText(c.path)}を施錠する（合言葉は「控え」の中の、このフォルダ用のメモにある）`] }),
+    evaluate(c, ws) {
+      const d = ws.node(ws.findFolder(c.path));
+      const violations = !d ? [`${pathText(c.path)}がありません`] : !d.shut ? [`${pathText(c.path)}が施錠されていません`]
+        : d.shut !== c.word ? [`${pathText(c.path)}の合言葉が、このフォルダ用のものではありません`] : [];
+      return { score: violations.length ? 0 : 1, violations };
+    },
+    extra(c, ws) {
+      const id = ws.findFolder(c.path);
+      if (id && !ws.node(id).shut) ws.lock(id, c.word);
+    },
+  });
+
+  /* 手数の上限: 「1 つずつ運ぶ目安」と「道具をすべて使った理論値」のあいだに置く。
+     格が上がるほど理論値に寄る（格 13 で目安と同じ、格 20 以上で理論値＋余裕 15%）。
+     gate=true の条項は、満たさないと充足度に関係なく差し戻し */
+  G.slackOf = (level) => clamp(1 - ((level.level || 1) - 13) * 0.12, 0.15, 1.25);
   G.opsLimit = (level) => {
-    const c = level.constraints.find((k) => k.type === 'opsLimit');
-    return c ? Math.ceil(G.computePar(level) * c.factor) : null;
+    if (!level.constraints.some((k) => k.type === 'opsLimit')) return null;
+    const par = G.computePar(level), ideal = G.computeIdeal(level);
+    return Math.ceil(ideal + (par - ideal) * G.slackOf(level));
   };
+  /* 上限が目安より低い依頼は、道具がないと納められない */
+  G.needsTools = (level) => { const cap = G.opsLimit(level); return cap != null && cap < G.computePar(level); };
   reg('opsLimit', {
     skill: 'care', weight: 2, gate: true,
-    describe: (c, ws, level) => ({ title: '上限', lines: [`手数は ${G.opsLimit(level)} 手まで（目安の ${c.factor} 倍。超えたら差し戻し。「ひとつ戻す」で手数も戻ります）`] }),
+    describe: (c, ws, level) => ({
+      title: '上限',
+      lines: [`手数は ${G.opsLimit(level)} 手まで（1 つずつ運ぶと ${G.computePar(level)} 手、道具をすべて使うと ${G.computeIdeal(level)} 手。超えたら差し戻し。「ひとつ戻す」で手数も戻ります）`],
+    }),
     evaluate(c, ws, level) {
       const limit = G.opsLimit(level);
       return { score: ws.ops <= limit ? 1 : 0, violations: ws.ops <= limit ? [] : [`手数が ${ws.ops} 手で、上限の ${limit} 手を超えています`] };
@@ -342,13 +424,13 @@
   /* ---------- 条項の評価 ---------- */
   G.clausesOf = (level) => level.constraints.concat([{ type: 'allShelved' }]);
 
-  G.evaluate = function (level, ws) {
+  const evaluateRaw = function (level, ws) {
     const items = G.clausesOf(level).map((c) => {
       const t = types[c.type];
       const r = t.evaluate(c, ws, level);
       const d = t.describe(c, ws, level);
       return {
-        type: c.type, skill: t.skill, gate: !!t.gate, weight: c.weight != null ? c.weight : t.weight,
+        type: c.type, skill: t.skill, gate: !!(c.gate || t.gate), weight: c.weight != null ? c.weight : t.weight,
         title: d.title, lines: c.text ? [c.text] : d.lines || [],
         score: clamp(r.score, 0, 1), violations: r.violations,
       };
@@ -358,9 +440,11 @@
     const gated = items.filter((i) => i.gate && i.score < 1);
     return { items, quality, gated, pass: !gated.length && quality >= (level.passAt != null ? level.passAt : 0.9) };
   };
+  /* 採点は、封のかかったファイルも本当の中身で見る */
+  G.evaluate = (level, ws) => G.withRaw(() => evaluateRaw(level, ws));
 
   /* ---------- 模範解・目安の手数 ---------- */
-  G.planFor = function (level, ws) {
+  const planRaw = function (level, ws) {
     const plan = new Map();
     ws.originals().forEach((f) => {
       let path = null;
@@ -375,8 +459,12 @@
     });
     return plan;
   };
+  G.planFor = (level, ws) => G.withRaw(() => planRaw(level, ws));
   /* 模範解どおりに 1 つずつ運んだときの手数（道具なしの基準） */
-  G.applyPlan = function (ws, plan, level) {
+  G.applyPlan = (ws, plan, level) => G.withRaw(() => applyRaw(ws, plan, level));
+  const applyRaw = function (ws, plan, level) {
+    /* 封のかかったファイルは、まず開ける（1 つにつき 1 手） */
+    ws.files().filter((f) => f.sealed).forEach((f) => ws.unseal(f.id, f.sealed));
     /* 鍵つきの置き場などで弾かれたものは、ほかを運び終えてからもう一度試す */
     let todo = [...plan.entries()];
     for (let round = 0; round < 3 && todo.length; round++) {
@@ -405,10 +493,11 @@
     };
   };
   /* 条項が求める棚の骨組み（フォルダのパスの一覧）。道具「設計図」と模範解が使う */
-  G.skeleton = function (level, ws) {
+  G.skeleton = (level, ws) => G.withRaw(() => skeletonRaw(level, ws));
+  const skeletonRaw = function (level, ws) {
     const seen = new Map();
     const add = (p) => { for (let i = 1; i <= p.length; i++) seen.set(p.slice(0, i).map(norm).join('/'), p.slice(0, i)); };
-    G.planFor(level, ws).forEach((p) => add(p));
+    planRaw(level, ws).forEach((p) => add(p));
     level.constraints.forEach((c) => {
       if (c.type === 'reserve') c.paths.forEach(add);
       if (c.type === 'backup' || c.type === 'shortcut') {
@@ -425,6 +514,47 @@
       level._par = ws.ops + (level.parAdjust || 0);
     }
     return level._par;
+  };
+
+  /* 理論値: 道具をすべて持っていて、束で運べるものはすべて束で運んだときの手数。
+       設計図で骨組みを 1 手 → 行き先ごとに束で 1 手ずつ → 写し・近道は複写機でまとめて → 名づけ札で束ごと
+     封を解くのと、鍵を先に入れるのと、施錠と、余計なフォルダの片づけは、道具があっても 1 つ 1 手 */
+  G.applyIdeal = (ws, level) => G.withRaw(() => {
+    ws.files().filter((f) => f.sealed).forEach((f) => ws.unseal(f.id, f.sealed));
+    const run = (c, early) => {
+      const t = types[c.type];
+      if (!!t.early !== early) return;
+      if (t.ideal) t.ideal(c, ws); else if (t.extra) t.extra(c, ws);
+    };
+    level.constraints.forEach((c) => run(c, true));
+    const missing = skeletonRaw(level, ws).filter((p) => !ws.findFolder(p));
+    if (missing.length) ws.batch(() => missing.forEach((p) => ws.ensurePath(p, true)), 'blueprint');
+    /* 鍵は先にひとつで。残りは行き先ごとに束で */
+    const plan = planRaw(level, ws);
+    const groups = new Map();
+    plan.forEach((path, id) => {
+      const target = ws.ensurePath(path, true);
+      if (ws.node(id).parent === target) return;
+      if (ws.node(id).attrs.kind === '鍵') return ws.move(id, target);
+      groups.set(target, (groups.get(target) || []).concat([id]));
+    });
+    groups.forEach((ids, target) => ws.move(ids, target));
+    level.constraints.forEach((c) => run(c, false));
+    if (level.constraints.some((c) => c.type === 'noEmpty')) {
+      const spared = G.sparedFolders(level, ws);
+      ws.folders().sort((p, q) => ws.folderPath(p.id).length - ws.folderPath(q.id).length).forEach((d) => {
+        if (ws.node(d.id) && !spared.has(d.id) && !ws.subtreeFiles(d.id).length) ws.removeFolder(d.id);
+      });
+    }
+  });
+  G.computeIdeal = function (level) {
+    if (level._ideal == null) {
+      const ws = new G.Workspace(level);
+      ws.release();
+      G.applyIdeal(ws, level);
+      level._ideal = ws.ops;
+    }
+    return level._ideal;
   };
 
   /* ---------- 納品の採点 ---------- */

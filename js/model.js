@@ -10,7 +10,7 @@
     pdf: '文書', docx: '文書', txt: '文書',
     xlsx: '表', csv: '表',
     mp3: '音声', wav: '音声',
-    key: '鍵',
+    key: '鍵', memo: '控え',
   };
 
   /* ファイルの属性の一覧。条項・仕分け札・札表示が共通で使う。
@@ -31,19 +31,29 @@
     /* hidden: 依頼の側で決まる内部の印。札・並べ札・虫めがね・仕分け札には出さない（自分で見比べて判断するもの） */
     stale: { label: '旧い版', hidden: true },
     fits: { label: '容量に収まる', hidden: true },
+    cryptic: { label: '仮の名前', hidden: true },
+    hush: { label: '伏せるもの', hidden: true },
   };
-  G.attr = (file, a) => (G.attrs[a] && G.attrs[a].get ? G.attrs[a].get(file) : file.attrs[a]);
+  /* 封のかかったファイルは、開けるまで種類・拡張子・サイズしか読めない。採点や模範解は G.withRaw の中で本当の値を読む */
+  const OPEN_ATTRS = ['kind', 'ext', 'size'];
+  G.raw = false;
+  G.withRaw = (fn) => { const was = G.raw; G.raw = true; try { return fn(); } finally { G.raw = was; } };
+  G.attr = (file, a) => {
+    if (file.sealed && !G.raw && !OPEN_ATTRS.includes(a)) return undefined;
+    return G.attrs[a] && G.attrs[a].get ? G.attrs[a].get(file) : file.attrs[a];
+  };
   G.fmtAttr = (a, v) => (v == null || v === '' ? '—'
     : G.attrs[a] && G.attrs[a].fmt ? G.attrs[a].fmt(v) : v + ((G.attrs[a] && G.attrs[a].unit) || ''));
 
   /* 備えつけのフォルダの印。依頼の marks で指定し、名前の変更・移動・片づけができない */
   G.marks = {
     cloud: { label: 'クラウド', sign: '雲', note: '社外からも見える置き場' },
-    backup: { label: 'バックアップ', sign: '控', note: '写しを入れておく置き場' },
+    backup: { label: 'バックアップ', sign: '写', note: '写しを入れておく置き場' },
     trash: { label: 'ごみ箱', sign: '屑', note: '要らないものを入れる' },
     pin: { label: 'よく使う', sign: '近', note: '近道（ショートカット）を置く' },
     vault: { label: '金庫', sign: '錠', note: '鍵を先に入れないと開かない' },
     mirror: { label: '鏡', sign: '鏡', note: '棚を逆さの順で辿るための近道を置く' },
+    memo: { label: '控え', sign: '帳', note: '合言葉のメモが入っている' },
   };
 
   class Workspace {
@@ -60,6 +70,8 @@
       /* まだ届いていないファイルの置き場。release() で机の上に出てくる */
       this.nodes.set('limbo', { id: 'limbo', type: 'folder', name: '未着', parent: null });
       this.fragile = !!(level && level.fragileLinks); // 本体を動かすと近道が切れる
+      /* 番号づけのある依頼では、いちばん上のフォルダは頭の「NN_」を外して名前を比べる */
+      this.numbered = !!(level && (level.constraints || []).some((c) => c.type === 'numbered'));
       if (level) this._build(level);
     }
 
@@ -79,6 +91,7 @@
           id, type: 'file', name,
           parent: at === '@late' ? 'limbo' : at ? this.ensurePath(at) : 'desk',
           attrs: Object.assign({ ext, kind: G.KINDS[ext] || 'その他', year: y, month: m, proj, doc }, extra || {}),
+          sealed: (extra && extra.sealWord) || undefined, // 封のかかったファイル（開ける合言葉）
         });
       });
       this.ops = 0;
@@ -136,10 +149,20 @@
       while (n.parent !== 'root') n = this.node(n.parent);
       return n.id;
     }
+    /* 名前を比べるときの形。番号づけのある依頼では、いちばん上（depth 0）だけ頭の「NN_」を外す */
+    key(name, depth) {
+      return norm(this.numbered && depth === 0 ? String(name).replace(/^\d{2}_/, '') : name);
+    }
+    /* 施錠されたフォルダ（自分か祖先）。無ければ null */
+    shutOver(id) {
+      for (let n = this.node(id); n; n = this.node(n.parent)) if (n.shut) return n;
+      return null;
+    }
     findFolder(path) {
       let cur = 'root';
       for (const seg of path) {
-        const hit = this.children(cur).find((c) => c.type === 'folder' && norm(c.name) === norm(seg));
+        const depth = path.indexOf(seg);
+        const hit = this.children(cur).find((c) => c.type === 'folder' && this.key(c.name, depth) === this.key(seg, depth));
         if (!hit) return null;
         cur = hit.id;
       }
@@ -210,7 +233,8 @@
     ensurePath(path, counted) {
       let cur = 'root';
       for (const seg of path) {
-        let hit = this.children(cur).find((c) => c.type === 'folder' && norm(c.name) === norm(seg));
+        const depth = path.indexOf(seg);
+        let hit = this.children(cur).find((c) => c.type === 'folder' && this.key(c.name, depth) === this.key(seg, depth));
         if (!hit) {
           if (counted) hit = this.node(this.createFolder(cur, seg));
           else {
@@ -229,9 +253,13 @@
       let reason = null;
       if (!target || target.type !== 'folder') return { ok, reason: '置き場所がありません' };
       const vault = this.lockedVault(targetId);
+      const shut = this.shutOver(targetId);
+      if (shut) return { ok, reason: `「${shut.name}」は施錠されています。開けてから入れてください` };
       for (const id of ids) {
         const n = this.node(id);
         if (!n || n.parent === targetId) continue;
+        const held = this.shutOver(id);
+        if (held) { reason = `「${held.name}」は施錠されています。開けてから取り出してください`; continue; }
         if (vault && !(n.type === 'file' && n.attrs.kind === '鍵')) {
           reason = `「${vault.name}」には鍵がかかっています。先に鍵のファイルを入れてください`;
           continue;
@@ -266,15 +294,22 @@
     rename(id, name) {
       const n = this.node(id);
       const nm = String(name).trim();
-      if (!n || n.locked || !nm || this._nameTaken(n.parent, nm, id)) return false;
+      if (!n || n.locked || !nm || (n.type === 'folder' && this._nameTaken(n.parent, nm, id))) return false;
       if (nm === n.name) return true;
-      this._tx('rename', 0, () => (n.name = nm));
+      /* フォルダの付け替えは手数に数えない。ファイルの付け替えは 1 手。元の名前と、たどってきた名前を残す */
+      this._tx('rename', n.type === 'file' ? 1 : 0, () => {
+        if (n.type === 'file') {
+          n.orig = n.orig || n.name;
+          n.names = (n.names || [n.name]).concat([nm]);
+        }
+        n.name = nm;
+      });
       return true;
     }
     /* フォルダを片づける。中のファイルは机の上へ戻る */
     removeFolder(id) {
       const n = this.node(id);
-      if (!n || n.type !== 'folder' || n.locked || id === 'root' || id === 'desk') return false;
+      if (!n || n.type !== 'folder' || n.locked || n.shut || id === 'root' || id === 'desk') return false;
       const doomed = [...this.nodes.values()].filter((x) => x.type === 'folder' && this.isInside(x.id, id));
       /* 中に備えつけのフォルダがあれば、それは棚の直下へ戻す */
       this._tx('removeFolder', 1, () => {
@@ -295,6 +330,26 @@
       });
     }
     /* 写し・近道を捨てる（原本は捨てられない） */
+    /* 封を解く。合言葉が合えば、札の中身が読めるようになる */
+    unseal(id, word) {
+      const f = this.node(id);
+      if (!f || !f.sealed || f.sealed !== word) return false;
+      this._tx('unseal', 1, () => { f.sealed = undefined; f.opened = true; });
+      return true;
+    }
+    /* フォルダを合言葉で施錠する／開ける。施錠中は出し入れできない */
+    lock(id, word) {
+      const d = this.node(id);
+      if (!d || d.type !== 'folder' || id === 'root' || id === 'desk' || d.shut || !word) return false;
+      this._tx('lock', 1, () => (d.shut = word));
+      return true;
+    }
+    unlock(id) {
+      const d = this.node(id);
+      if (!d || !d.shut) return false;
+      this._tx('unlock', 1, () => (d.shut = undefined));
+      return true;
+    }
     removeRef(id) {
       const f = this.node(id);
       if (!f || !f.role) return false;

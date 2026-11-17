@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const MAX_LEVEL = 20;
+  const MAX_LEVEL = 24;
 
   /* 種から決まる乱数（同じ id なら何度作っても同じ依頼になる） */
   function rng(seed) {
@@ -298,7 +298,7 @@
           ? `〈機密区分〉が「公開」${x.has('cloudSize') ? `で ${x.cap}MB 以下` : ''}のうち、小さい順に足して合計 ${x.capTotal}MB に収まるもの` : null,
         path: ['クラウド', x.a.seg],
       }),
-      more: () => [{ type: 'forbid', when: eq('secrecy', '機密'), under: ['クラウド'] }],
+      more: () => [{ type: 'forbid', gate: true, when: eq('secrecy', '機密'), under: ['クラウド'] }],
       say: (x) => x.r.pick([
         `社外の方にも見てもらうものは「クラウド」に置きます。〈機密区分〉が「公開」のものを、クラウドの中で${x.a.word}ごとに分けてください。機密のものは決してクラウドに置かないでください。`,
         `〈機密区分〉が「公開」のファイルは「クラウド」へ上げてください。中は${x.a.word}ごとに。言うまでもありませんが、機密のものをクラウドに置くのは厳禁です。`,
@@ -360,9 +360,9 @@
     /* ── 格 13 から: 理屈を覚えたあとで、圧力と、現実離れした仕掛けを 1 つずつ ── */
     opsCap: {
       label: '手数の上限', min: 13, side: 'hand',
-      more: () => [{ type: 'opsLimit', factor: 1.5 }],
+      more: () => [{ type: 'opsLimit' }],
       say: () => 'あまり棚をいじり回されると困ります。手数には上限を設けますので、条項の数字を確かめてから始めてください。',
-      teach: '手数に上限があります（目安の 1.5 倍）。超えたまま納品すると、充足が満点でも差し戻しです。動かす前に棚の形を決めましょう。「ひとつ戻す」で手数も戻ります。',
+      teach: '手数に上限があります。上限は、1 つずつ運んだときの手数と、道具をすべて使ったときの手数のあいだにあり、格が上がるほど後者に近づきます。高い格では、設計図・まとめ掴み・仕分け札・複写機がないと収まりません。「ひとつ戻す」で手数も戻ります。',
     },
     fragile: {
       label: '切れる近道', min: 14, side: 'logic', needs: 'shortcut',
@@ -399,17 +399,47 @@
       label: '鏡の棚', min: 20, side: 'logic', needs: 'nest', mark: ['鏡', 'mirror'],
       more: (x) => [{
         type: 'shortcut', title: '鏡', path: ['鏡', x.b.seg, x.a.seg],
-        when: { all: [eq('author', x.mirrorAuthor), eq('proj', x.mirrorProj), NOT_DUP, { not: eq('stale', '旧') }] },
+        when: { all: [eq('author', x.mirrorAuthor), eq('proj', x.mirrorProj), NOT_DUP, { not: eq('stale', '旧') }, { not: eq('hush', '秘') }] },
         say: `〈作成者〉が「${x.mirrorAuthor}」で〈案件〉が「${x.mirrorProj}」（重複と旧い版を除く）`,
       }],
       say: (x) => `${x.mirrorAuthor}さんが担当した「${x.mirrorProj}」の分は、逆の順でも辿れるようにしたいのです。「鏡」の中に、${x.b.word}ごと、その中を${x.a.word}ごと、という逆さの入れ子を作り、そこに近道を置いてください。本体は動かさずに。`,
       teach: '「鏡」の中には、棚の入れ子を逆さにした形（内側と外側を入れ替えたもの）を作り、近道を置きます。同じファイルを、ふたつの順で辿れるようにする仕掛けです。対象は、手紙で指定された人と案件の分だけ。',
     },
+
+    /* ── 格 21 から: 名前そのものを仕事にする、合言葉で守る ── */
+    number: {
+      label: '番号づけ', min: 21, side: 'logic',
+      teach: '棚のフォルダは名前順に並びます。決まった順に並べるには、いちばん上のフォルダの頭に「01_」「02_」と番号を振ります。名前の付け替えは手数に数えません。番号は条項にある順のとおりに。',
+    },
+    rename: {
+      label: '名づけ直し', min: 22, side: 'hand',
+      more: (x) => [{ type: 'fileName', when: eq('cryptic', '仮'), template: '{year}_{proj}_{doc}', say: '名前から中身の分からないもの（scan_・IMG_・無題 などで始まるもの）' }],
+      say: () => '名前を見ても中身の分からないファイルがあります（scan_ や IMG_、無題 などで始まるもの）。札を見て、「年_案件_書類の種別」の形に付け直してください。拡張子はそのままで。',
+      teach: 'ファイルの名前を付け直す依頼です。ファイルを押して札を出し、「名前を変える」を押します。元の名前と、たどってきた名前は札に残るので、いつでも元に戻せます。ファイルの付け替えは 1 つにつき 1 手です。',
+    },
+    seal: {
+      label: '封のかかった札', min: 23, side: 'logic',
+      say: () => 'いくつかのファイルには封がかかっていて、合言葉を入れないと中身が分かりません。合言葉は「控え」の中のメモにあります。',
+      teach: '封のかかったファイルは、種類とサイズしか読めません。並べ札・虫めがね・仕分け札も、封の中は見られません。「控え」のメモを押して合言葉を控え帳に写し、ファイルの札で「封を解く」を押して合言葉を選びます。',
+    },
+    lock: {
+      label: '施錠', min: 24, side: 'hand', needs: 'exception',
+      more: (x) => [{ type: 'lockUp', path: [x.lockTarget], word: x.words.lock }],
+      say: (x) => `運び終えたら、「${x.lockTarget}」には錠をかけておいてください。合言葉は「控え」の中に、このフォルダ用のメモがあります。古い合言葉のメモも混ざっているので、取りちがえないように。`,
+      teach: 'フォルダを施錠する依頼です。施錠したフォルダには出し入れができなくなるので、錠は最後に。「控え」のメモから、そのフォルダ用の合言葉を控え帳に写し、フォルダの見出しの「錠」で選びます。金庫（先に鍵を入れる）とは順番が逆です。',
+    },
+    /* 格に積まず、事情のある依頼だけに出る */
+    hide: {
+      label: '奥にしまう', min: 99, side: 'logic',
+      rule: (x) => ({ when: eq('hush', '秘'), path: x.hidePath, say: `名前に「${x.hushWord}」とあるもの` }),
+      say: (x) => `名前に「${x.hushWord}」とあるものは、まだ人に見せられません。${x.hidePath.map((s) => `「${s}」`).join('の中の')}まで入れて、目につかないようにしてください。途中のフォルダの名前も、このとおりにお願いします。`,
+      teach: '人目につかせたくないファイルを、何段も奥のフォルダにしまいます。途中のフォルダの名前も指定どおりに。奥にしまったものは自分でも見失いやすいので、所在札があると安心です。',
+    },
   };
   /* 分類の条項の優先順位（上が先）。理屈: 捨てるもの → 守るもの → 特別扱い → 古いもの → 外に出すもの → 途中のもの → ふつう */
-  const ORDER = ['vault', 'trash', 'versions', 'secret', 'exception', 'archive', 'cloud', 'draft'];
+  const ORDER = ['vault', 'trash', 'hide', 'versions', 'secret', 'exception', 'archive', 'cloud', 'draft'];
   /* 格ごとの要素の数。ファイルの数ではなく、ここで難しさが決まる。格 13 からは 1 格につき 1 つずつ加わる */
-  const COUNT = [0, 1, 2, 3, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+  const COUNT = [0, 1, 2, 3, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
 
   function chooseMechs(level, r) {
     const open = Object.keys(MECHS).filter((k) => MECHS[k].min <= level);
@@ -441,6 +471,7 @@
     opsCap: 'kagiri', timer: 'kagiri', late: 'kagiri',
     archive: 'rireki', versions: 'rireki', trash: 'rireki',
     nest: 'tadori', shortcut: 'tadori', mirror: 'tadori', fragile: 'tadori', reserve: 'tadori',
+    number: 'tadori', rename: 'tadori', seal: 'mamori', lock: 'mamori', hide: 'mamori',
   };
   /* core（その事情なら必ず要る要素）は 2 倍に数える。あとから加わった要素に、事情の芯が押し流されないように */
   function tendencyOf(mechs, fallback, core) {
@@ -873,10 +904,11 @@
     const rules = lv.constraints[0].rules.slice(0, -1);
     const files = ws.originals();
     const contested = files.filter((f) => rules.filter((q) => G.match(q.when, f)).length >= 2).length;
-    const others = lv.constraints.filter((c) => ['backup', 'shortcut', 'forbid', 'reserve', 'opsLimit'].includes(c.type)).length;
+    const others = lv.constraints.filter((c) => ['backup', 'shortcut', 'forbid', 'reserve', 'opsLimit', 'numbered', 'fileName', 'lockUp'].includes(c.type)).length;
     const has = (k) => lv.mechs.includes(k);
     const tricks = (has('fragile') ? 1.5 : 0) + (has('timer') ? 1 : 0) + (has('late') ? 1.5 : 0) + (has('vault') ? 2 : 0) +
-      (has('capacity') ? 2 : 0) + (has('versions') ? 1.5 : 0) + (has('nest') ? 0.5 : 0) + (lv.scene !== 'desk' ? 0.5 : 0);
+      (has('capacity') ? 2 : 0) + (has('versions') ? 1.5 : 0) + (has('number') ? 1 : 0) + (has('rename') ? 1.5 : 0) +
+      (has('seal') ? 1.5 : 0) + (has('lock') ? 1.5 : 0) + (has('hide') ? 1 : 0) + (has('nest') ? 0.5 : 0) + (lv.scene !== 'desk' ? 0.5 : 0);
     lv.contested = contested;
     return rules.length + contested * 0.6 + others * 1.2 + tricks;
   }
@@ -917,6 +949,11 @@
     ['late', '話を聞いた別の部署からも、追加が届きそうです。'],
     ['vault', '見てはいけないものは、置き場を分けるだけでは足りないと言われました。'],
     ['mirror', '人によって、探すときの手がかりが違います。'],
+    ['hide', 'まだ表に出せないものが、いくつか紛れています。'],
+    ['number', '開くたびに並びが変わると、探すのに手間取ります。'],
+    ['rename', '名前を見ても中身の分からないものがあります。'],
+    ['seal', '開けるのに合言葉の要るファイルが混ざっています。'],
+    ['lock', '片づけ終えたら、鍵をかけておきたいのです。'],
   ];
   /* その事情で足していける要素の並び（事情ごとの more → こじれ）。前提の要素は先に入れる */
   function ladderOf(def) {
